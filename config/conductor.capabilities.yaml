@@ -1,0 +1,14 @@
+include_builtins: true
+
+# Additive plugin config for the generic Conductor Engine runtime.
+# Built-ins ship automatically; this file exists to demonstrate dynamic loading.
+capabilities: []
+
+# Example optional memU-backed memory capability:
+# - import_path: engine.capabilities.memory:MemoryCapability
+#   config:
+#     provider_type: memu
+#     scope:
+#       user_id: conductor-engine
+#     service_config:
+#       storage_backend: inmemory
