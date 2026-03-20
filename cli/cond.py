@@ -9,8 +9,8 @@ from typing import Any
 
 import yaml
 
-from engine.loader import load_capabilities
 from engine.interfaces.task import TaskSubmission
+from engine.loader import load_capabilities
 from engine.registry.capabilities import CapabilityRegistry
 from engine.runtime.store import LocalTaskStore
 from engine.supervisor.service import TaskSupervisor
