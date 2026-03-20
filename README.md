@@ -40,3 +40,10 @@ Conductor-Engine/
   config/
   tests/
 ```
+
+## Automation
+
+- `.github/workflows/ci.yml` validates Conventional Commit messages, runs `ruff check .`, and runs `pytest tests/engine -q`.
+- `.github/workflows/release.yml` uses Python Semantic Release to calculate the next version, tag the release, build the package, and publish it to PyPI.
+- PyPI publishing is configured for Trusted Publishing through the `pypi` GitHub environment. On PyPI, register this repository and the `.github/workflows/release.yml` workflow as the trusted publisher.
+- If you want the current `0.1.0` in `pyproject.toml` to be the baseline release, create and push `v0.1.0` before enabling the release workflow. Otherwise, semantic-release will calculate the next version from commit history.

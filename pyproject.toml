@@ -26,34 +26,17 @@ asyncio_mode = "auto"
 pythonpath = ["."]
 addopts = "-v --tb=short"
 
-[tool.ruff]
-line-length = 100
-target-version = "py312"
+[tool.semantic_release]
+allow_zero_version = true
+major_on_zero = false
+build_command = "python -m pip install --upgrade build && python -m build"
+commit_message = "chore(release): {version} [skip ci]"
+commit_parser = "conventional"
+tag_format = "v{version}"
+version_toml = ["pyproject.toml:project.version"]
 
-[tool.ruff.lint]
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "B",   # flake8-bugbear
-    "UP",  # pyupgrade
-    "N",   # pep8-naming
-    "ANN", # flake8-annotations (type hints)
-    "S",   # flake8-bandit (security)
-    "C4",  # flake8-comprehensions
-    "RUF", # ruff-specific rules
-]
-ignore = [
-    "ANN101", # missing type annotation for self
-    "ANN102", # missing type annotation for cls
-    "S101",   # use of assert (required in tests)
-    "ANN401", # dynamically typed Any
-]
+[tool.semantic_release.remote.token]
+env = "GITHUB_TOKEN"
 
-[tool.ruff.lint.per-file-ignores]
-"tests/**" = ["ANN", "S"]
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
+[tool.semantic_release.changelog.default_templates]
+changelog_file = "CHANGELOG.md"
