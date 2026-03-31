@@ -1,89 +1,134 @@
-# Conductor Engine — Copilot Prompt Guide
+# Conductor Engine — Copilot Architecture Prompt
 
 ## Purpose
 
-You are assisting in building **Conductor Engine**, a modular, AI-agnostic orchestration framework.
+You are contributing to Conductor Engine, a minimal, composable orchestration runtime.
 
-Your goal is to generate code that aligns with:
+Your goal is to implement features that maintain:
+- simplicity
+- durability
+- observability
+- extensibility
 
-* clean architecture
-* modular design
-* pluggable components
-* minimal core
-* runtime agnosticism
+This is not a task runner.
+This is a control plane for workflows and systems.
 
 ---
 
-## What Conductor Engine Is
+## Core Mental Model
 
-Conductor Engine is:
+Conductor Engine is similar to:
+- Kubernetes (control plane)
+- Temporal / Netflix Conductor (durable workflows)
+- Airflow (task orchestration)
 
-> A control plane for orchestrating agents, capabilities, and systems.
-
-It is **NOT**:
-
-* just an AI agent framework
-* not tied to any LLM provider
-* not a monolithic automation tool
+But: **AI is optional — orchestration is the core.**
 
 ---
 
 ## Core Responsibilities
 
-Conductor Engine must:
-
-* orchestrate tasks
-* coordinate agents (optional)
-* execute capabilities (tools)
-* enforce guardrails and policies
-* remain storage and runtime agnostic
+The system must:
+- orchestrate tasks and workflows
+- execute capabilities (tools)
+- persist state at every step
+- recover from failure
+- expose full execution visibility
 
 ---
 
-## Architecture Overview
+## Non-Negotiable Principles
+
+### 1. Durable Execution (CRITICAL)
+
+The system MUST guarantee:
+- every task state is persisted
+- execution can resume after crash/restart
+- workflows survive long-running pauses
+- retries are state-aware (not blind)
+
+Durable execution is required for reliable systems.
+
+### 2. Full State Visibility
+
+The system must NEVER be a black box.
+
+Every task must have:
+- current state
+- execution history
+- inputs and outputs
+- failure reason (if any)
+
+### 3. Extensibility
+
+Everything must be pluggable:
+- orchestrators
+- capabilities
+- storage backends
+- policy engines
+- agents
+
+Do NOT hardcode behavior.
+
+### 4. AI is Optional
+
+Valid execution path:
+
+```text
+Task → Capability → Result
+```
+
+Agents enhance the system but are NOT required.
+
+### 5. Separation of Concerns
+
+Strict layer boundaries:
+
+| Layer | Responsibility |
+|---|---|
+| Orchestrator | controls workflow execution |
+| Supervisor | executes individual tasks |
+| Capability | performs the action |
+| Guardrails | validate inputs |
+| Policy Engine | authorize execution |
+
+---
+
+## Architecture
 
 ```text
 Task
  ↓
-Supervisor (Orchestrator)
+Orchestrator
  ↓
-Agent (optional)
+Supervisor
  ↓
-Guardrails (validation)
+Guardrails
  ↓
-Policy Engine (authorization)
+Policy Engine
  ↓
-Capability Execution
+Capability
  ↓
-State Update
+State Store
 ```
 
 ---
 
 ## Core Components
 
-### 1. Supervisor (Core Orchestrator)
-
-* manages task lifecycle
-* routes execution
-* coordinates agents and capabilities
-
-### 2. Task Model
-
-A task is the unit of execution.
+### Task Model
 
 ```python
 class Task:
     id: str
     goal: str
-    status: str
-    steps: list
+    status: str  # PENDING, RUNNING, COMPLETED, FAILED
+    input: dict
     result: dict
+    history: list
 ```
 
-### 3. Capability Interface
-
-Capabilities are pluggable tools.
+### Capability Interface
 
 ```python
 class Capability:
@@ -94,151 +139,136 @@ class Capability:
         pass
 ```
 
-### 4. Agent Interface (Optional Layer)
+Capabilities must be:
+- stateless
+- idempotent (or declare side effects explicitly)
 
-Agents provide reasoning, not execution.
+### Orchestrator Interface
 
-```python
-class Agent:
-    name: str
-
-    def plan(self, task):
-        pass
-
-    def evaluate(self, task):
-        pass
-```
-
-### 5. Guardrails
-
-Validate agent output before execution:
-
-* schema validation
-* tool filtering
-* input sanitization
-
-### 6. Policy Engine (OPA-like)
-
-Policy enforces permissions.
+The orchestrator MUST be replaceable.
 
 ```python
-class PolicyEngine:
-    def authorize(self, action, context):
+class Orchestrator:
+    def run(self, workflow):
         pass
 ```
 
-### 7. Plugin System
+Implementations:
+- `LinearOrchestrator` — default, sequential steps
+- `ParallelOrchestrator` — future
+- `DAGOrchestrator` — future
+- `AgentOrchestrator` — future
 
-Capabilities must be dynamically loadable.
+### Supervisor
 
-```python
-registry.register(capability)
-```
+- validates tasks
+- executes capabilities
+- persists results
 
-### 8. Storage Abstraction
+Must NOT contain workflow logic. The supervisor (`engine/supervisor/service.py`) is the single source of task execution truth — no capability or agent should bypass it.
 
-The framework must not depend on specific databases.
+### Guardrails
 
-```python
-class TaskStore:
-    def create(self, task): pass
-    def update(self, task): pass
-    def get(self, id): pass
-```
+- validate structure and schema
+- prevent invalid execution
+- run before a task leaves PENDING
 
----
+### Policy Engine
 
-## Design Principles
-
-### Keep Core Minimal
-
-Only include:
-
-* orchestration logic
-* interfaces
-* execution flow
-
-### Everything is Pluggable
-
-Do NOT hardcode:
-
-* LLM providers
-* databases
-* external APIs
-* integrations
-
-### AI is Optional
-
-The system must work without AI:
-
-```text
-Task → Capability → Result
-```
-
-AI is an enhancement, not a dependency.
-
-### Separate Framework from Implementation
-
-Framework: generic orchestration logic and interfaces.
-
-Application (e.g., home-ai-control-plane): integrations, workflows, configs.
-
-### Runtime Agnostic
-
-Must support: local execution, Docker, Kubernetes, agent platforms.
-
-### Storage Agnostic
-
-Support via adapters: Postgres, Mongo, Redis/Valkey, filesystem.
-
-### Simple First
-
-Avoid: premature abstraction, unnecessary layers, complex patterns.
+- authorize execution
+- enforce permissions
+- deny unsafe operations
 
 ---
 
 ## Execution Model
 
-Minimal flow:
+**Minimal:**
 
 ```text
-Submit Task → Supervisor → Execute Capability → Store Result
+Submit Task → Supervisor → Capability → Store Result
 ```
 
-Advanced flow (Phase 2+):
+**Workflow:**
 
 ```text
-Task → Planner Agent → Execution → Validator Agent → Supervisor decision
+Goal → Orchestrator → Step Execution → Validation → Result
 ```
 
 ---
 
-## Extensibility
+## Workflow Patterns (must support)
 
-The system must allow adding new capabilities, agents, orchestrators, storage backends, and policy engines **without modifying core logic**.
+- **Sequential** — default, ordered steps
+- **Parallel** — independent steps run concurrently
+- **Conditional** — branching based on step output
+- **Loop** — retry and refinement cycles
 
----
-
-## Anti-Patterns (Avoid)
-
-* Tightly coupling to OpenAI or any provider
-* Embedding business logic in core
-* Mixing framework code with integration code
-* Hardcoding workflows
-* Assuming a single runtime environment
+Do NOT assume linear-only execution.
 
 ---
 
-## Long-Term Vision
+## State and Persistence
 
-> A universal orchestration runtime for AI, automation, and distributed systems.
-> Safe to run unattended. Remote-first. Policy-enforced. Self-improving over time.
+- state must be persisted after each step
+- no in-memory-only critical state
+- system must be able to resume execution after restart
+- storage is pluggable — Postgres, SQLite, Redis, filesystem
+- Pydantic v2 — validate at system boundaries, not deep inside execution logic
 
-Mental model:
+---
 
-```text
-Kubernetes (control plane)  +  Zapier (automation)  +  LangChain (AI layer)
-```
+## Event Model
+
+The system should emit structured events:
+- `task_started`
+- `task_completed`
+- `task_failed`
+
+Used for: logging, metrics, TUI, integrations.
+
+---
+
+## Reliability Features
+
+The system must support:
+- retries with attempt tracking (`max_retries`, `attempt` on `TaskRecord`)
+- timeouts (to avoid stuck workflows)
+- backpressure
+- rate limits per capability
+
+---
+
+## Failure Handling
+
+Failures must:
+- be recorded with full context (error, attempt count, timestamps)
+- support state-aware retry (not blind repetition)
+- allow escalation after threshold
+
+Future:
+- compensation / rollback (Phase 5+)
+- guild-level failure sharing across projects (Phase 6)
+
+---
+
+## Testing Philosophy
+
+Every component must be:
+- testable in isolation
+- deterministic (no hidden side effects)
+- mockable at system boundaries
+
+---
+
+## Anti-Patterns (do not do)
+
+- Tightly coupling to any LLM provider
+- Embedding business logic in core
+- Assuming single-node runtime
+- Relying on in-memory-only state for critical data
+- Hiding execution state from callers
+- Bypassing the supervisor from a capability or agent
 
 ---
 
@@ -246,13 +276,27 @@ Kubernetes (control plane)  +  Zapier (automation)  +  LangChain (AI layer)
 
 When generating code:
 
-* Follow interfaces strictly — `engine/interfaces/` defines the contracts
-* Prefer composition over inheritance
-* Keep functions small and readable
-* Avoid unnecessary abstractions
-* Ensure components are replaceable without touching the supervisor
-* The supervisor (`engine/supervisor/service.py`) is the single source of orchestration truth — no capability or agent should bypass it
-* Pydantic v2 — validate at system boundaries, not deep inside execution logic
-* Every piece of code should increase modularity, reduce coupling, improve clarity, and support extensibility
+- Follow interfaces strictly — `engine/interfaces/` defines the contracts
+- Prefer composition over inheritance
+- Keep functions small and readable
+- Avoid unnecessary abstractions
+- Ensure components are replaceable without touching the supervisor
+- The supervisor (`engine/supervisor/service.py`) is the single source of orchestration truth — no capability or agent should bypass it
+- Pydantic v2 — validate at system boundaries, not deep inside execution logic
+- Every piece of code should increase modularity, reduce coupling, improve clarity, and support extensibility
 
-> Build a foundation, not a feature.
+---
+
+## Contribution Goal
+
+Every contribution must:
+- improve modularity
+- preserve durability guarantees
+- maintain system observability
+- keep the core minimal
+
+---
+
+## Final Rule
+
+> Build a durable, observable orchestration engine — not a feature-rich tool.
