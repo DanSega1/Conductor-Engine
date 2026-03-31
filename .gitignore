@@ -89,3 +89,4 @@ try-it/output/
 .squad/
 .copilot/
 .squad-workstream
+.DS_Store
