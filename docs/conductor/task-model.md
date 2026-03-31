@@ -17,6 +17,7 @@ input:
   action: write_text
   path: notes/hello.txt
   content: hello
+max_retries: 2
 metadata:
   source: cli
 ```
@@ -26,6 +27,7 @@ Fields:
 - `name`: human-readable task title
 - `capability`: registry key to execute
 - `input`: capability-specific payload
+- `max_retries`: optional retry count on capability failure (default: `0`)
 - `metadata`: optional caller context
 
 ### `TaskRecord`
@@ -39,6 +41,8 @@ Persisted task state:
 - `metadata`
 - `status`
 - `result`
+- `attempt` — number of execution attempts made (incremented per retry)
+- `max_retries` — retry budget copied from the submission
 - `created_at`
 - `updated_at`
 

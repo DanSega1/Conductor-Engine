@@ -33,3 +33,13 @@ class AgentInterface(Protocol):
 
 - Phase 1: no runtime dependency on agents
 - Phase 2: planner breaks goals into steps, worker executes capabilities, validator checks output
+
+## Phase 2 Contract Design (decided)
+
+The generic `AgentContext` / `AgentResponse` types are retained as base types but are not used as concrete runtime types in the orchestrator. Phase 2 introduces role-specific narrowed types:
+
+- `PlannerContext` / `PlanResponse` — planner receives a goal and available capabilities; returns ordered steps
+- `WorkerContext` / `WorkerResponse` — worker receives a step and prior results; returns a concrete `TaskSubmission`
+- `ValidatorContext` / `ValidationResponse` — validator receives the goal and all completed `TaskRecord`s; returns a pass/fail verdict
+
+These live in `engine/interfaces/workflow.py` (Phase 2). The supervisor (`engine/supervisor/service.py`) is not modified — the `WorkflowOrchestrator` sits above it.

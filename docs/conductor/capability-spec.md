@@ -41,5 +41,6 @@ capabilities:
 ## Built-In Examples
 
 - `echo`: smoke tests and contract verification
-- `filesystem`: local file reads/writes under a configured root
+- `filesystem`: local file reads/writes under a configured root (actions: `read_text`, `write_text`, `list_dir`)
 - `http`: simple outbound GET/POST calls
+- `memory`: optional key-value memory store backed by the memU provider abstraction
