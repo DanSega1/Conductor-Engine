@@ -39,6 +39,7 @@ class TaskSupervisor:
             capability=submission.capability,
             input=submission.input,
             metadata=submission.metadata,
+            max_retries=submission.max_retries,
         )
         self.store.save(task)
         self.queue.enqueue(task.task_id)
@@ -72,28 +73,36 @@ class TaskSupervisor:
         task.updated_at = started_at
         self.store.save(task)
 
-        try:
-            payload = capability.validate_input(task.input)
-            result = capability.execute(
-                payload,
-                CapabilityContext(
-                    task_id=task.task_id,
-                    task_name=task.name,
-                    workdir=self.workdir,
-                ),
-            )
-            task.result = TaskResult(
-                success=True,
-                output=result.output,
-                metadata=result.metadata,
-                started_at=started_at,
-                completed_at=_now(),
-            )
-            task.status = TaskStatus.COMPLETED
-        except Exception as exc:
+        last_exc: Exception | None = None
+        while task.attempt <= task.max_retries:
+            task.attempt += 1
+            try:
+                payload = capability.validate_input(task.input)
+                result = capability.execute(
+                    payload,
+                    CapabilityContext(
+                        task_id=task.task_id,
+                        task_name=task.name,
+                        workdir=self.workdir,
+                    ),
+                )
+                task.result = TaskResult(
+                    success=True,
+                    output=result.output,
+                    metadata=result.metadata,
+                    started_at=started_at,
+                    completed_at=_now(),
+                )
+                task.status = TaskStatus.COMPLETED
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+
+        if last_exc is not None:
             task.result = TaskResult(
                 success=False,
-                error=str(exc),
+                error=str(last_exc),
                 started_at=started_at,
                 completed_at=_now(),
             )

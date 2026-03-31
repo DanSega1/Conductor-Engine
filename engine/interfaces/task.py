@@ -35,6 +35,7 @@ class TaskSubmission(BaseModel):
     capability: str
     input: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    max_retries: int = 0
 
 
 class TaskResult(BaseModel):
@@ -58,5 +59,7 @@ class TaskRecord(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     status: TaskStatus = TaskStatus.PENDING
     result: TaskResult | None = None
+    attempt: int = 0
+    max_retries: int = 0
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
