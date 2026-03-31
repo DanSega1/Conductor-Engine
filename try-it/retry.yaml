@@ -1,0 +1,6 @@
+name: Retry on failure
+capability: http
+input:
+  method: GET
+  url: http://does-not-exist.conductor.local
+max_retries: 2

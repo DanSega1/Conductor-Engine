@@ -1,0 +1,5 @@
+name: Read the note back
+capability: filesystem
+input:
+  action: read_text
+  path: try-it/output/hello.txt

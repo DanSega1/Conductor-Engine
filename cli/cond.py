@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 from engine.interfaces.task import TaskSubmission
 from engine.loader import load_capabilities
@@ -17,6 +21,9 @@ from engine.supervisor.service import TaskSupervisor
 
 DEFAULT_STORE = Path(".conductor/tasks.json")
 DEFAULT_CONFIG = Path("config/conductor.capabilities.yaml")
+
+console = Console()
+err_console = Console(stderr=True)
 
 
 def _json_dump(payload: Any) -> str:
@@ -37,6 +44,84 @@ def _resolve_registry(config_path: str | None, workdir: Path) -> CapabilityRegis
     if DEFAULT_CONFIG.exists():
         return load_capabilities(DEFAULT_CONFIG, base_path=workdir)
     return load_capabilities(base_path=workdir)
+
+
+def _format_output(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    compact = json.dumps(value, separators=(",", ":"))
+    if len(compact) > 120:
+        return compact[:117] + "..."
+    return compact
+
+
+def _attempts_display(attempt: int, max_retries: int) -> str:
+    if max_retries > 0:
+        return f"{attempt} / {max_retries + 1}"
+    return str(attempt)
+
+
+def _run_panel(task: Any) -> None:
+    is_success = task.status == "completed"
+    status_text = Text()
+    if is_success:
+        status_text.append("✓ completed", style="green")
+    else:
+        status_text.append("✗ failed", style="red")
+
+    grid = Table.grid(padding=(0, 2))
+    grid.add_column(min_width=10)
+    grid.add_column()
+
+    grid.add_row(Text("status", style="bold"), status_text)
+    grid.add_row(Text("capability", style="bold"), task.capability)
+    grid.add_row(Text("attempts", style="bold"), _attempts_display(task.attempt, task.max_retries))
+
+    if is_success and task.result and task.result.output is not None:
+        grid.add_row(Text("output", style="bold"), _format_output(task.result.output))
+    elif not is_success and task.result and task.result.error:
+        grid.add_row(Text("error", style="bold"), task.result.error)
+
+    border_style = "green" if is_success else "red"
+    console.print(Panel(grid, title=task.name, border_style=border_style))
+
+
+def _capability_list_table(registry: CapabilityRegistry) -> None:
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=True)
+    table.add_column("Name")
+    table.add_column("Risk")
+    table.add_column("Tags")
+
+    for descriptor in registry.list():
+        table.add_row(
+            descriptor.name,
+            descriptor.risk_level,
+            ", ".join(descriptor.tags),
+        )
+
+    console.print(table)
+
+
+def _task_list_table(supervisor: TaskSupervisor) -> None:
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=True)
+    table.add_column("ID")
+    table.add_column("Name")
+    table.add_column("Status")
+    table.add_column("Capability")
+    table.add_column("Attempts")
+
+    for task in supervisor.list_tasks():
+        table.add_row(
+            task.task_id[:8] + "…",
+            task.name,
+            task.status,
+            task.capability,
+            _attempts_display(task.attempt, task.max_retries),
+        )
+
+    console.print(table)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -82,17 +167,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         submission = TaskSubmission.model_validate(_load_yaml_or_json(args.task_file))
         task = supervisor.run_submission(submission)
-        print(_json_dump(task.model_dump(mode="json")))
+        _run_panel(task)
         return 0
 
     if args.command == "capability" and args.capability_command == "list":
-        payload = [descriptor.model_dump(mode="json") for descriptor in registry.list()]
-        print(_json_dump(payload))
+        _capability_list_table(registry)
         return 0
 
     if args.command == "task" and args.task_command == "list":
-        payload = [task.model_dump(mode="json") for task in supervisor.list_tasks()]
-        print(_json_dump(payload))
+        _task_list_table(supervisor)
         return 0
 
     parser.error("Unsupported command")
