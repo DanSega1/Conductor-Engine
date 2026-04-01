@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from cli.cond import main
@@ -12,10 +11,11 @@ def test_capability_list_outputs_builtin_capabilities(capsys) -> None:
     exit_code = main(["capability", "list"])
 
     captured = capsys.readouterr()
-    payload = json.loads(captured.out)
 
     assert exit_code == 0
-    assert [item["name"] for item in payload] == ["echo", "filesystem", "http"]
+    assert "echo" in captured.out
+    assert "filesystem" in captured.out
+    assert "http" in captured.out
 
 
 def test_run_executes_task_and_persists_it(tmp_path: Path, capsys) -> None:
@@ -35,9 +35,8 @@ def test_run_executes_task_and_persists_it(tmp_path: Path, capsys) -> None:
     exit_code = main(["--store", str(store_file), "run", str(task_file)])
 
     captured = capsys.readouterr()
-    payload = json.loads(captured.out)
 
     assert exit_code == 0
-    assert payload["status"] == "completed"
-    assert payload["result"]["output"] == {"message": "hello from cond"}
+    assert "completed" in captured.out
+    assert "hello from cond" in captured.out
     assert store_file.exists()

@@ -9,6 +9,21 @@ from engine.interfaces.capability import (
 )
 from engine.interfaces.memory import MemoryDocument, MemoryHit, MemoryProvider, MemoryQuery
 from engine.interfaces.task import RiskLevel, TaskRecord, TaskResult, TaskStatus, TaskSubmission
+from engine.interfaces.workflow import (
+    PlannerContext,
+    PlannerInterface,
+    PlanResponse,
+    PlanStep,
+    ValidationResponse,
+    ValidatorContext,
+    ValidatorInterface,
+    WorkerContext,
+    WorkerInterface,
+    WorkerResponse,
+    WorkflowGoal,
+    WorkflowResult,
+    WorkflowStatus,
+)
 
 __all__ = [
     "AgentContext",
@@ -23,9 +38,22 @@ __all__ = [
     "MemoryHit",
     "MemoryProvider",
     "MemoryQuery",
+    "PlannerContext",
+    "PlannerInterface",
+    "PlanResponse",
+    "PlanStep",
     "RiskLevel",
     "TaskRecord",
     "TaskResult",
     "TaskStatus",
     "TaskSubmission",
+    "ValidationResponse",
+    "ValidatorContext",
+    "ValidatorInterface",
+    "WorkerContext",
+    "WorkerInterface",
+    "WorkerResponse",
+    "WorkflowGoal",
+    "WorkflowResult",
+    "WorkflowStatus",
 ]
