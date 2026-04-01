@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from importlib.metadata import version as _pkg_version
 import json
 from pathlib import Path
 from typing import Any
@@ -148,6 +149,11 @@ def _task_list_table(supervisor: TaskSupervisor) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cond", description="Conductor Engine CLI")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"cond {_pkg_version('conductor-engine')}",
+    )
     parser.add_argument(
         "--store",
         default=str(DEFAULT_STORE),

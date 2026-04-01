@@ -6,11 +6,10 @@ orchestrator.  No mocks — all assertions against actual execution results.
 
 from __future__ import annotations
 
+from pathlib import Path
 import string
 import time
-from pathlib import Path
 
-import pytest
 from pydantic import BaseModel
 
 from engine.interfaces.capability import (
@@ -371,7 +370,7 @@ def test_single_character_messages(tmp_path: Path) -> None:
 
     assert result.status == WorkflowStatus.COMPLETED
     assert len(result.records) == 26
-    for record, char in zip(result.records, string.ascii_lowercase):
+    for record, char in zip(result.records, string.ascii_lowercase, strict=False):
         assert record.status == TaskStatus.COMPLETED
         assert record.result.output["message"] == char
 
