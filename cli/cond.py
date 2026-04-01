@@ -7,27 +7,26 @@ import json
 from pathlib import Path
 from typing import Any
 
-import yaml
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+import yaml
 
 from engine.interfaces.task import TaskSubmission
+from engine.interfaces.workflow import PlanStep, WorkflowGoal, WorkflowResult
 from engine.loader import load_capabilities
 from engine.registry.capabilities import CapabilityRegistry
 from engine.runtime.store import LocalTaskStore
 from engine.supervisor.service import TaskSupervisor
+from engine.workflow.agents import LinearPlanner, PassthroughValidator, PassthroughWorker
+from engine.workflow.orchestrator import WorkflowOrchestrator
 
 DEFAULT_STORE = Path(".conductor/tasks.json")
 DEFAULT_CONFIG = Path("config/conductor.capabilities.yaml")
 
 console = Console()
 err_console = Console(stderr=True)
-
-
-def _json_dump(payload: Any) -> str:
-    return json.dumps(payload, indent=2, sort_keys=True)
 
 
 def _load_yaml_or_json(path: str | Path) -> dict[str, Any]:
@@ -86,6 +85,29 @@ def _run_panel(task: Any) -> None:
 
     border_style = "green" if is_success else "red"
     console.print(Panel(grid, title=task.name, border_style=border_style))
+
+
+def _workflow_result_panel(result: WorkflowResult) -> None:
+    is_success = result.status == "completed"
+    status_text = Text()
+    if is_success:
+        status_text.append("\u2713 completed", style="green")
+    else:
+        status_text.append(f"\u2717 {result.status}", style="red")
+
+    grid = Table.grid(padding=(0, 2))
+    grid.add_column(min_width=10)
+    grid.add_column()
+
+    grid.add_row(Text("goal", style="bold"), result.goal)
+    grid.add_row(Text("status", style="bold"), status_text)
+    grid.add_row(Text("steps", style="bold"), str(len(result.records)))
+
+    border_style = "green" if is_success else "red"
+    console.print(Panel(grid, title="workflow", border_style=border_style))
+
+    for record in result.records:
+        _run_panel(record)
 
 
 def _capability_list_table(registry: CapabilityRegistry) -> None:
@@ -152,6 +174,11 @@ def build_parser() -> argparse.ArgumentParser:
     task_subparsers = task_parser.add_subparsers(dest="task_command", required=True)
     task_subparsers.add_parser("list", help="List tasks from the local store.")
 
+    workflow_parser = subparsers.add_parser("workflow", help="Run orchestrated workflows.")
+    workflow_subparsers = workflow_parser.add_subparsers(dest="workflow_command", required=True)
+    wf_run = workflow_subparsers.add_parser("run", help="Execute a workflow file.")
+    wf_run.add_argument("workflow_file", help="Path to a YAML or JSON workflow file.")
+
     return parser
 
 
@@ -176,6 +203,23 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "task" and args.task_command == "list":
         _task_list_table(supervisor)
+        return 0
+
+    if args.command == "workflow" and args.workflow_command == "run":
+        raw = _load_yaml_or_json(args.workflow_file)
+        goal = WorkflowGoal(goal=raw["goal"], capabilities=raw.get("capabilities", []))
+        steps = [
+            PlanStep(name=s["name"], capability=s["capability"], input_hint=s.get("input", {}))
+            for s in raw.get("steps", [])
+        ]
+        orchestrator = WorkflowOrchestrator(
+            planner=LinearPlanner(steps=steps),
+            worker=PassthroughWorker(),
+            validator=PassthroughValidator(),
+            supervisor=supervisor,
+        )
+        result = orchestrator.run(goal)
+        _workflow_result_panel(result)
         return 0
 
     parser.error("Unsupported command")
