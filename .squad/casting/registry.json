@@ -1,0 +1,60 @@
+{
+  "agents": {
+    "Keaton": {
+      "persistent_name": "Keaton",
+      "universe": "The Usual Suspects",
+      "role": "Lead & Architect",
+      "created_at": "2026-03-31T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "McManus": {
+      "persistent_name": "McManus",
+      "universe": "The Usual Suspects",
+      "role": "Backend Engine Dev",
+      "created_at": "2026-03-31T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "Hockney": {
+      "persistent_name": "Hockney",
+      "universe": "The Usual Suspects",
+      "role": "CLI & Integration Dev",
+      "created_at": "2026-03-31T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "Fenster": {
+      "persistent_name": "Fenster",
+      "universe": "The Usual Suspects",
+      "role": "Tester & QA",
+      "created_at": "2026-03-31T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "Kobayashi": {
+      "persistent_name": "Kobayashi",
+      "universe": "The Usual Suspects",
+      "role": "DevOps & Release",
+      "created_at": "2026-03-31T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "Scribe": {
+      "persistent_name": "Scribe",
+      "universe": "exempt",
+      "role": "Scribe",
+      "created_at": "2026-03-31T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "Ralph": {
+      "persistent_name": "Ralph",
+      "universe": "exempt",
+      "role": "Work Monitor",
+      "created_at": "2026-03-31T00:00:00Z",
+      "legacy_named": false,
+      "status": "active"
+    }
+  }
+}
