@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.6.0 (2026-04-01)
+
+### Features
+
+- **cli**: ✨ Add version argument to CLI for displaying package version
+  ([`f74ce25`](https://github.com/DanSega1/Conductor-Engine/commit/f74ce25626e2dab1c10012cdfa3d3966c74c7360))
+
+
 ## v0.5.0 (2026-04-01)
 
 
