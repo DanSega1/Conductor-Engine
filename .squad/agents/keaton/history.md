@@ -26,6 +26,30 @@
 - **Target user locked:** individual → small team. Solo dev on a home lab should run forever with `LocalTaskStore` and built-in capabilities. Every external service dep must be genuinely optional with graceful no-op defaults.
 - **Phase 7 remote API stays in core** — it's the platform surface. Auth/multi-tenant plugins are addons.
 
+### 2026-04-02 — home-ai-control-plane analysis
+
+**Requested by:** Dan
+
+Wrote two decision records to `.squad/decisions/inbox/` based on a research brief on the `home-ai-control-plane` repo (https://github.com/DanSega1/home-ai-control-plane).
+
+**Key finding:** The app re-implemented the engine's supervisor FSM, capability model, and workflow orchestration independently — and arrived at the same layered architecture. This validates the engine's direction but confirms the Phase 1 surface is too small to onboard a production workload. The app currently uses only memory abstractions from the engine.
+
+**Six gaps identified (prioritized):**
+1. `TaskStatus` extension — add `AWAITING_APPROVAL`, `APPROVED`, `POLICY_DENIED`, `CANCELLED` (highest priority; blocks FSM adoption)
+2. `audit_trail: list[AuditEntry]` on `TaskRecord` — each transition records actor + action
+3. `PolicyEngine` Protocol — promote from Phase 5 to Phase 3; OPA fails-closed is a production requirement, not a future concern
+4. Approval/suspension model — `supervisor.resume(task_id, actor, decision)` for AWAITING_APPROVAL → APPROVED/REJECTED transitions
+5. `workflow_id` on `TaskRecord` — already planned pre-Phase-3; this use case confirms urgency
+6. `MCPCapability` as optional extra (`conductor-mcp`) — adapts any MCP server to the Capability interface
+
+**Documentation strategy:** Add `docs/conductor/use-cases/home-control-plane.md` (architectural mapping doc) + "Built with Conductor Engine" in README after the top three gaps are closed. App repo is positioned as reference implementation; no app code embedded in engine repo.
+
+**Files written:**
+- `.squad/decisions/inbox/keaton-homeai-fit-analysis.md`
+- `.squad/decisions/inbox/keaton-homeai-showcase.md`
+
+---
+
 ### 2026-03-31 — Project kickoff
 - Phase 1 is complete: Supervisor, registry, capabilities (echo, filesystem, http, memory), local JSON store, in-memory queue, `cond` CLI
 - Phase 2 is planned: agent roles (planner, worker, validator) per `docs/conductor/agent-interface.md`

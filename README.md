@@ -41,6 +41,12 @@ Conductor-Engine/
   tests/
 ```
 
+## Built with Conductor Engine
+
+**[home-ai-control-plane](https://github.com/DanSega1/home-ai-control-plane)** — A policy-governed, multi-agent AI control plane running on a Raspberry Pi 5. Manages personal digital workflows, home-lab services, and smart-home integrations with OPA-enforced approvals, budget limits, and a skill-based execution model. The system that motivated this engine.
+
+→ [How the engine maps to this use case](docs/conductor/use-cases/home-control-plane.md)
+
 ## Automation
 
 - `.github/workflows/ci.yml` validates Conventional Commit messages, runs `ruff check .`, and runs `pytest tests/engine -q`.
