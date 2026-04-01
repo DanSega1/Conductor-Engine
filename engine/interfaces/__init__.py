@@ -8,7 +8,14 @@ from engine.interfaces.capability import (
     CapabilityResult,
 )
 from engine.interfaces.memory import MemoryDocument, MemoryHit, MemoryProvider, MemoryQuery
-from engine.interfaces.task import RiskLevel, TaskRecord, TaskResult, TaskStatus, TaskSubmission
+from engine.interfaces.task import (
+    AuditEntry,
+    RiskLevel,
+    TaskRecord,
+    TaskResult,
+    TaskStatus,
+    TaskSubmission,
+)
 from engine.interfaces.workflow import (
     PlannerContext,
     PlannerInterface,
@@ -30,6 +37,7 @@ __all__ = [
     "AgentInterface",
     "AgentResponse",
     "AgentRole",
+    "AuditEntry",
     "Capability",
     "CapabilityContext",
     "CapabilityDescriptor",

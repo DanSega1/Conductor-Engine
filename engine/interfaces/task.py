@@ -19,6 +19,10 @@ class TaskStatus(StrEnum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    AWAITING_APPROVAL = "awaiting_approval"
+    APPROVED = "approved"
+    POLICY_DENIED = "policy_denied"
+    CANCELLED = "cancelled"
 
 
 class RiskLevel(StrEnum):
@@ -49,6 +53,17 @@ class TaskResult(BaseModel):
     completed_at: datetime | None = None
 
 
+class AuditEntry(BaseModel):
+    """A single recorded state transition on a task."""
+
+    timestamp: datetime = Field(default_factory=_now)
+    actor: str  # who or what caused the transition, e.g. "supervisor", "user", "policy"
+    action: str  # description, e.g. "status_change", "retry", "approved"
+    from_status: TaskStatus | None = None
+    to_status: TaskStatus | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class TaskRecord(BaseModel):
     """Stored task document for the minimal runtime."""
 
@@ -61,5 +76,8 @@ class TaskRecord(BaseModel):
     result: TaskResult | None = None
     attempt: int = 0
     max_retries: int = 0
+    workflow_id: str | None = None
+    archived_at: datetime | None = None
+    audit_trail: list[AuditEntry] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)

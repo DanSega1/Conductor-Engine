@@ -11,6 +11,7 @@ Import hierarchy (no circular deps):
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
 from uuid import uuid4
@@ -150,10 +151,9 @@ class ValidationResponse(BaseModel):
     issues: list[str] = Field(default_factory=list)
 
 
-@runtime_checkable
-class ValidatorInterface(Protocol):
+class ValidatorInterface(ABC):
     """Contract for any component that can validate a completed workflow."""
 
+    @abstractmethod
     def validate(self, goal: str, context: ValidatorContext) -> ValidationResponse:
         """Assess whether the workflow results satisfy the original goal."""
-        ...

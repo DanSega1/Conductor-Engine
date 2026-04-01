@@ -57,3 +57,12 @@
 - **Archive-over-delete** applies to all store implementations (`LocalTaskStore`, `MemoryTaskStore`, and any future backend): records must never be hard-deleted; use `archived_at` or a cold-store move for all cleanup paths.
 - **`workflow_id` must be added to `TaskRecord`** before Phase 3 — individual task records cannot be traced back to their originating workflow without it; this is a required field addition, not optional.
 - **`ValidatorInterface` should be ABC, not Protocol** — `@runtime_checkable` Protocol `isinstance` checks confirm method name presence only, not signature match; switch to `ABC` + `abstractmethod` to enforce the full contract at class definition time.
+
+### 2026-04-02 — Pre-Phase-3 model and interface fixes
+
+- Extended `TaskStatus` with `AWAITING_APPROVAL`, `APPROVED`, `POLICY_DENIED`, `CANCELLED` to support policy and approval workflows.
+- Added `AuditEntry` model to `engine/interfaces/task.py`; placed between `TaskResult` and `TaskRecord` to avoid forward-reference issues with the `list[AuditEntry]` field on `TaskRecord`.
+- Added `workflow_id`, `archived_at`, and `audit_trail` to `TaskRecord`; new fields inserted after `max_retries`, before the `created_at`/`updated_at` bookends.
+- Changed `ValidatorInterface` from `@runtime_checkable Protocol` to `ABC` with `@abstractmethod`; enforces the two-argument signature at class definition time. `PlannerInterface` and `WorkerInterface` remain as Protocols.
+- `PassthroughValidator` now explicitly inherits `ValidatorInterface(ABC)` — required once the duck-typed Protocol was removed.
+- Paginated `TaskStore.list()` across Protocol, `MemoryTaskStore`, and `LocalTaskStore`; keyword-only args (`limit`, `offset`, `status`) prevent positional misuse and keep filter/slice logic consistent between backends.

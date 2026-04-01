@@ -155,11 +155,16 @@ def test_worker_interface_isinstance() -> None:
 
 
 def test_validator_interface_isinstance() -> None:
-    class MockValidator:
+    class MockValidator(ValidatorInterface):
         def validate(self, goal: str, context: ValidatorContext) -> ValidationResponse:
             return ValidationResponse(passed=True, verdict="ok")
 
     assert isinstance(MockValidator(), ValidatorInterface)
+
+
+def test_validator_interface_cannot_instantiate_directly() -> None:
+    with pytest.raises(TypeError):
+        ValidatorInterface()  # type: ignore[abstract]
 
 
 # ---------------------------------------------------------------------------

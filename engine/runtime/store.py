@@ -18,8 +18,14 @@ class TaskStore(Protocol):
     def get(self, task_id: str) -> TaskRecord | None:
         """Return a task by id if present."""
 
-    def list(self) -> list[TaskRecord]:
-        """Return all stored tasks."""
+    def list(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        status: str | None = None,
+    ) -> list[TaskRecord]:
+        """Return stored tasks, optionally filtered and paginated."""
 
 
 class MemoryTaskStore:
@@ -36,8 +42,23 @@ class MemoryTaskStore:
         task = self._tasks.get(task_id)
         return task.model_copy(deep=True) if task else None
 
-    def list(self) -> list[TaskRecord]:
-        return [self._tasks[task_id].model_copy(deep=True) for task_id in sorted(self._tasks)]
+    def list(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        status: str | None = None,
+    ) -> list[TaskRecord]:
+        records = [
+            self._tasks[task_id].model_copy(deep=True)
+            for task_id in sorted(self._tasks)
+        ]
+        if status is not None:
+            records = [r for r in records if r.status == status]
+        records = records[offset:]
+        if limit is not None:
+            records = records[:limit]
+        return records
 
 
 class LocalTaskStore:
@@ -66,6 +87,18 @@ class LocalTaskStore:
         record = payload.get(task_id)
         return TaskRecord.model_validate(record) if record else None
 
-    def list(self) -> list[TaskRecord]:
+    def list(
+        self,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+        status: str | None = None,
+    ) -> list[TaskRecord]:
         payload = self._read()
-        return [TaskRecord.model_validate(record) for _, record in sorted(payload.items())]
+        records = [TaskRecord.model_validate(record) for _, record in sorted(payload.items())]
+        if status is not None:
+            records = [r for r in records if r.status == status]
+        records = records[offset:]
+        if limit is not None:
+            records = records[:limit]
+        return records
