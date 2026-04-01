@@ -2,6 +2,17 @@
 
 <!-- version list -->
 
+## v0.7.0 (2026-04-01)
+
+### Features
+
+- **docs**: ✨ Add home-ai-control-plane use case and analysis to documentation
+  ([`6b0e21a`](https://github.com/DanSega1/Conductor-Engine/commit/6b0e21a847a841796f786693ae9926cb159d03f0))
+
+- **task**: ✨ Extend TaskStatus and add AuditEntry model
+  ([`e2b207f`](https://github.com/DanSega1/Conductor-Engine/commit/e2b207ffaf3db9aafc40c9463011dd36ad98260c))
+
+
 ## v0.6.0 (2026-04-01)
 
 ### Features
