@@ -19,7 +19,6 @@ from pydantic import BaseModel, Field
 
 from engine.interfaces.task import TaskRecord, TaskSubmission
 
-
 # ---------------------------------------------------------------------------
 # Shared enums and value types
 # ---------------------------------------------------------------------------
