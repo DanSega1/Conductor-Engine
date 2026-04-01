@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^python -m pytest tests/engine/test_event_bus\\.py -q --tb=short 2>&1$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

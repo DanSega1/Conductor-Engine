@@ -7,8 +7,10 @@ from pathlib import Path
 
 from engine.guardrails.validation import validate_task_submission
 from engine.interfaces.capability import CapabilityContext
+from engine.interfaces.event import EventBus, EventType, TaskEvent
 from engine.interfaces.task import TaskRecord, TaskResult, TaskStatus, TaskSubmission
 from engine.registry.capabilities import CapabilityRegistry
+from engine.runtime.bus import NullEventBus
 from engine.runtime.queue import InMemoryTaskQueue
 from engine.runtime.store import TaskStore
 
@@ -26,11 +28,13 @@ class TaskSupervisor:
         store: TaskStore,
         queue: InMemoryTaskQueue | None = None,
         workdir: str | Path | None = None,
+        event_bus: EventBus | None = None,
     ) -> None:
         self.registry = registry
         self.store = store
         self.queue = queue or InMemoryTaskQueue()
         self.workdir = str(Path(workdir or Path.cwd()).resolve())
+        self._bus: EventBus = event_bus if event_bus is not None else NullEventBus()
 
     def submit(self, submission: TaskSubmission) -> TaskRecord:
         validate_task_submission(submission, self.registry)
@@ -72,6 +76,17 @@ class TaskSupervisor:
         task.status = TaskStatus.RUNNING
         task.updated_at = started_at
         self.store.save(task)
+        self._bus.emit(
+            TaskEvent(
+                event_type=EventType.TASK_STARTED,
+                task_id=task.task_id,
+                task_name=task.name,
+                capability=task.capability,
+                status=task.status,
+                attempt=task.attempt,
+                workflow_id=task.workflow_id,
+            )
+        )
 
         last_exc: Exception | None = None
         while task.attempt <= task.max_retries:
@@ -95,6 +110,17 @@ class TaskSupervisor:
                 )
                 task.status = TaskStatus.COMPLETED
                 last_exc = None
+                self._bus.emit(
+                    TaskEvent(
+                        event_type=EventType.TASK_COMPLETED,
+                        task_id=task.task_id,
+                        task_name=task.name,
+                        capability=task.capability,
+                        status=task.status,
+                        attempt=task.attempt,
+                        workflow_id=task.workflow_id,
+                    )
+                )
                 break
             except Exception as exc:
                 last_exc = exc
@@ -107,6 +133,18 @@ class TaskSupervisor:
                 completed_at=_now(),
             )
             task.status = TaskStatus.FAILED
+            self._bus.emit(
+                TaskEvent(
+                    event_type=EventType.TASK_FAILED,
+                    task_id=task.task_id,
+                    task_name=task.name,
+                    capability=task.capability,
+                    status=task.status,
+                    attempt=task.attempt,
+                    workflow_id=task.workflow_id,
+                    error=task.result.error if task.result else None,
+                )
+            )
 
         task.updated_at = _now()
         self.store.save(task)

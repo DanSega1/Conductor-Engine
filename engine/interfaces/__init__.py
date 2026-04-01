@@ -7,6 +7,7 @@ from engine.interfaces.capability import (
     CapabilityDescriptor,
     CapabilityResult,
 )
+from engine.interfaces.event import EventBus, EventType, TaskEvent
 from engine.interfaces.memory import MemoryDocument, MemoryHit, MemoryProvider, MemoryQuery
 from engine.interfaces.task import (
     AuditEntry,
@@ -42,6 +43,8 @@ __all__ = [
     "CapabilityContext",
     "CapabilityDescriptor",
     "CapabilityResult",
+    "EventBus",
+    "EventType",
     "MemoryDocument",
     "MemoryHit",
     "MemoryProvider",
@@ -51,6 +54,7 @@ __all__ = [
     "PlannerContext",
     "PlannerInterface",
     "RiskLevel",
+    "TaskEvent",
     "TaskRecord",
     "TaskResult",
     "TaskStatus",

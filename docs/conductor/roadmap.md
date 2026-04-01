@@ -30,7 +30,7 @@ Single-process task execution with a pluggable capability surface.
 
 ---
 
-## Phase 2 — Workflow Layer
+## Phase 2 — Workflow Layer (complete)
 
 Multi-step task execution via agent roles. The supervisor stays untouched; a thin orchestrator sits above it.
 
@@ -81,13 +81,24 @@ Accepts a workflow YAML (goal + step list). One `try-it/` example chaining two c
 
 ---
 
-## Phase 3 — Production Hardening
+## Phase 3 — Production Hardening (in progress)
 
 Stability, observability, and deployment-readiness.
 
-- Async supervisor and orchestrator (`async_utils.py` already in place)
-- Structured logging with configurable output (JSON for aggregators, plain for terminals)
-- Health and metrics endpoint (lightweight HTTP, no framework dependency)
+### Done
+- Extended `TaskStatus`: `AWAITING_APPROVAL`, `APPROVED`, `POLICY_DENIED`, `CANCELLED`
+- `AuditEntry` model + `audit_trail` on `TaskRecord`
+- `workflow_id` and `archived_at` on `TaskRecord` (archive-over-delete)
+- `ValidatorInterface` → ABC (enforcement, not duck-typing)
+- `TaskStore.list()` pagination: `limit`, `offset`, `status` filter
+- **EventBus**: `TaskEvent`, `EventBus` Protocol, `NullEventBus` (default), `LoggingEventBus`; supervisor emits `task_started` / `task_completed` / `task_failed`
+
+### Remaining
+- PolicyEngine interface — authorize-before-execute hook in supervisor; null policy by default
+- Replace `async_utils.py` dead-end — async execution path needs a real design
+- `cond health` command — `health_check() -> list[str]` per component
+- `design-integrity.md` — living doc for cross-phase invariants
+- `MCPCapability` — capability wrapping an MCP tool call
 - Pluggable task store backends (Postgres, SQLite, Redis)
 - Parallel step execution in the orchestrator (with failure isolation)
 - Rate limiting and timeout controls per capability
