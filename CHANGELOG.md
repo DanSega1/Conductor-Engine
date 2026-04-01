@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.4.0 (2026-04-01)
+
+### Features
+
+- **workflow**: ✨ Add workflow interfaces and contracts
+  ([`4b8bb2b`](https://github.com/DanSega1/Conductor-Engine/commit/4b8bb2bb4fcee8c4f3640e400fe40e3a4f1d198d))
+
+
 ## v0.3.0 (2026-03-31)
 
 
