@@ -1,0 +1,12 @@
+goal: "Echo two messages in sequence"
+capabilities:
+  - echo
+steps:
+  - name: echo-hello
+    capability: echo
+    input:
+      message: hello from workflow
+  - name: echo-world
+    capability: echo
+    input:
+      message: world
