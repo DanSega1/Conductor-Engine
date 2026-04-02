@@ -71,13 +71,13 @@ No new infrastructure — orchestrates existing machinery. Fail-fast on the firs
 - `LinearPlanner` — ordered steps from a structured goal, no LLM required
 - `PassthroughValidator` — always passes; opt-in to real validation
 
-Required for integration tests and `try-it/` examples without external dependencies. These are also the extension points downstream consumers override.
+Required for integration tests and `examples/` without external dependencies. These are also the extension points downstream consumers override.
 
 ### Step 4 — Workflow CLI + examples
 
 **Command:** `cond workflow run <file.yaml>`
 
-Accepts a workflow YAML (goal + step list). One `try-it/` example chaining two capability calls end to end.
+Accepts a workflow YAML (goal + step list). One `examples/` workflow chaining two capability calls end to end.
 
 ---
 
@@ -307,6 +307,8 @@ on:
       - "pyproject.toml"
       - "requirements-test.txt"
       - "ruff.toml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/release.yml"
   push:
     branches: [main]
     paths:
@@ -316,9 +318,11 @@ on:
       - "pyproject.toml"
       - "requirements-test.txt"
       - "ruff.toml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/release.yml"
 ```
 
-Paths that should **not** trigger CI: `docs/**`, `.squad/**`, `*.md`, `.github/workflows/squad-*.yml`, `try-it/**` / `examples/**`.
+Paths that should **not** trigger CI: `docs/**`, `.squad/**`, `*.md`, `.github/workflows/squad-*.yml`, `examples/**`.
 
 Do the same for `release.yml` — docs-only pushes to `main` should not attempt a release calculation.
 
@@ -357,7 +361,7 @@ Also consider adding the build as an explicit step before the `python-semantic-r
 Verify the published wheel and sdist contain only what consumers need. Current `pyproject.toml` includes `cli*` and `engine*` via `setuptools.packages.find`. Check and tighten:
 
 - **Include:** `engine/`, `cli/` (the `cond` entry point)
-- **Exclude from sdist:** `tests/`, `docs/`, `.squad/`, `examples/`, `.github/`, `try-it/`
+- **Exclude from sdist:** `tests/`, `docs/`, `.squad/`, `examples/`, `.github/`
 - Add an explicit `[tool.setuptools.packages.find] exclude` list
 - Add a `MANIFEST.in` (or `tool.setuptools` config) to prune non-essential files from the sdist
 - After a local build (`python -m build`), inspect with `tar tzf dist/*.tar.gz | sort` to verify nothing extraneous bleeds in

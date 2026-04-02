@@ -102,7 +102,7 @@ input:
 ```
 
 ```bash
-cond run echo.yaml
+cond run examples/echo.yaml
 ```
 
 ---
@@ -119,7 +119,7 @@ input:
 ```
 
 ```bash
-cond run write.yaml
+cond run examples/write-file.yaml
 ```
 
 Supported `action` values: `write_text`, `read_text`, `list_dir`.
