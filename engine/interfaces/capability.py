@@ -53,7 +53,7 @@ class Capability(ABC):
             return payload
         return self.input_model.model_validate(payload)
 
-    def man_page(self) -> str | None:
+   def man_page(self) -> str | None:
         """Return an optional manual page body for CLI help output."""
         return None
 
