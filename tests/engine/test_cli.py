@@ -40,3 +40,38 @@ def test_run_executes_task_and_persists_it(tmp_path: Path, capsys) -> None:
     assert "completed" in captured.out
     assert "hello from cond" in captured.out
     assert store_file.exists()
+
+
+def test_help_without_topic_lists_commands_and_capabilities(capsys) -> None:
+    exit_code = main(["help"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "cond help" in captured.out
+    assert "workflow" in captured.out
+    assert "echo" in captured.out
+    assert "man cond" in captured.out
+
+
+def test_help_echo_shows_capability_schema(capsys) -> None:
+    exit_code = main(["help", "echo"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Return the provided message unchanged." in captured.out
+    assert "message" in captured.out
+    assert "Example task" in captured.out
+    assert "man cond" in captured.out
+
+
+def test_help_workflow_shows_command_manual(capsys) -> None:
+    exit_code = main(["help", "workflow"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "cond workflow run <workflow-file>" in captured.out
+    assert "goal: Echo two messages in sequence" in captured.out
+    assert "man cond" in captured.out
