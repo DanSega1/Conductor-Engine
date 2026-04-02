@@ -67,6 +67,21 @@ cond task list
 
 ---
 
+### `cond help [topic]`
+
+Show offline reference pages for commands and capabilities.
+
+```bash
+man cond
+cond help
+cond help echo
+cond help workflow
+```
+
+Use `man cond` for the stable CLI reference. Use `cond help` for runtime-aware topics such as loaded capabilities. Standard CLI usage help still works with `cond -h` and `cond --help`.
+
+---
+
 ## Global flags
 
 | Flag | Default | Description |

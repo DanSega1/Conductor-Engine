@@ -188,6 +188,8 @@ Cross-cutting tasks not tied to a specific phase. Prioritised roughly — addres
 
 ### ⚠️ Time-sensitive: GitHub Actions — Node.js 24 migration (deadline: June 2, 2026)
 
+Status: done (2026-04-02) — Upgraded workflow action pins to Node.js 24–compatible versions in `ci.yml` and `release.yml`.
+
 Node.js 20 actions are deprecated. GitHub will force Node.js 24 by default on **June 2, 2026**; Node.js 20 is removed entirely on **September 16, 2026**.
 
 Actions to upgrade in `.github/workflows/`:
@@ -213,6 +215,8 @@ Currently releases are created by `python-semantic-release` but release notes ar
 ---
 
 ### Rename `try-it/` → `examples/` with better explanations
+
+Status: done (2026-04-02) — Renamed the example directory, documented each runnable example, and added an `examples/README.md` index.
 
 The `try-it/` directory name is not idiomatic. Replace it with `examples/`:
 - Rename `try-it/` to `examples/`
@@ -249,6 +253,19 @@ Create a workflow that keeps generated content fresh without manual effort:
   - Check that README badge URLs resolve (link checker)
   - (Future) Re-render architecture PNG from Mermaid source and commit if changed
 - Keep this separate from CI so failures here don't block merges, they create issues
+
+---
+
+### CLI docs sync rule
+
+When a stable CLI command, flag, or help surface changes, update all relevant docs in the same change:
+- `README.md` for user-facing quick-start or top-level usage changes
+- `docs/conductor/cond-cli.md` for detailed CLI reference updates
+- `docs/man/cond.1` for stable native manual coverage
+
+Rule of thumb:
+- If the change affects `cond --help`, command names, flags, or stable command behavior, update the manpage too
+- If the change only affects runtime capability help or registry-derived output, update `cond help` behavior/docs and skip the manpage unless the stable CLI contract changed
 
 ---
 
@@ -293,6 +310,8 @@ The project reached `0.8.0` in under 2 days. The conventional commit parser is b
 
 ### CI path scoping — don't trigger on non-code changes
 
+Status: done (2026-04-02) — Restricted CI triggers to code, test, packaging, and workflow files so docs-only changes no longer run the suite.
+
 `ci.yml` currently fires on every push and every PR regardless of what changed. A typo fix in `docs/` or a `.squad/` memory update runs the full lint+test suite unnecessarily.
 
 Add `paths` filters to `ci.yml`:
@@ -330,6 +349,8 @@ Do the same for `release.yml` — docs-only pushes to `main` should not attempt 
 
 ### Release gate — require CI to pass before build
 
+Status: done (2026-04-02) — Switched `release.yml` to `workflow_run` and gated publishing on successful `CI` runs from `main`.
+
 `release.yml` currently runs independently of `ci.yml`. A push to `main` can trigger a PyPI publish before tests have passed (CI and release are separate workflow runs that race).
 
 Fix: add a `workflow_run` trigger to `release.yml` so it only proceeds after `CI` completes successfully:
@@ -358,6 +379,8 @@ Also consider adding the build as an explicit step before the `python-semantic-r
 
 ### Build contents — include only library essentials
 
+Status: done (2026-04-02) — Added package excludes plus `MANIFEST.in`, then verified the built wheel only contains `cli/`, `engine/`, and dist-info.
+
 Verify the published wheel and sdist contain only what consumers need. Current `pyproject.toml` includes `cli*` and `engine*` via `setuptools.packages.find`. Check and tighten:
 
 - **Include:** `engine/`, `cli/` (the `cond` entry point)
@@ -368,20 +391,24 @@ Verify the published wheel and sdist contain only what consumers need. Current `
 
 ---
 
-### `cond man` — manual pages for capabilities and commands
+### Hybrid `man cond` + `cond help`
 
-Add a `man` subcommand to the `cond` CLI that shows structured reference documentation without requiring internet access:
+Status: done (2026-04-02) — Added a packaged native `cond.1` manpage for stable CLI docs while keeping `cond help` for runtime-aware command and capability help.
+
+Add a hybrid offline help system:
 
 ```
-cond man                      # list available topics
-cond man echo                 # capability spec: inputs, outputs, risk level, examples
-cond man filesystem           # same for filesystem capability
-cond man workflow             # workflow YAML format reference
-cond man run                  # detail on cond run flags and behaviour
+man cond                      # stable CLI manual
+cond help                     # list runtime-aware topics
+cond help echo                # capability spec: inputs, outputs, risk level, examples
+cond help filesystem          # same for filesystem capability
+cond help workflow            # workflow YAML format reference
+cond help run                 # detail on cond run flags and behaviour
 ```
 
 Implementation:
 - Each `Capability` class can optionally expose a `man_page() -> str` method; falls back to `descriptor.description` + input schema introspection if not implemented
-- Output rendered with `rich` (headings, parameter table, example block) — same style as existing CLI panels
-- `cond man` with no argument prints a topic index derived from the registry and a hardcoded set of built-in command topics
+- `cond help` output is rendered with `rich` (headings, parameter table, example block) — same style as existing CLI panels
+- `cond help` with no argument prints a topic index derived from the registry and a hardcoded set of built-in command topics
+- `man cond` covers the stable core CLI surface only; dynamic capability and plugin-aware help remains under `cond help`
 - No external dependency; pure Python + rich

@@ -22,6 +22,9 @@ cond = "cli.cond:main"
 include = ["cli*", "engine*"]
 exclude = ["tests*", "docs*", "examples*", "try-it*"]
 
+[tool.setuptools.data-files]
+"share/man/man1" = ["docs/man/cond.1"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

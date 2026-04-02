@@ -1,10 +1,12 @@
 include README.md
 include pyproject.toml
+include docs/man/cond.1
 graft cli
 graft engine
 prune .github
 prune .squad
 prune docs
+graft docs/man
 prune examples
 prune tests
 prune try-it
