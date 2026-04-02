@@ -1,0 +1,9 @@
+# Demonstrates: writing a text file through the filesystem capability.
+# Capabilities: filesystem
+# Run: cond run examples/write-file.yaml
+name: Write a note
+capability: filesystem
+input:
+  action: write_text
+  path: examples/output/hello.txt
+  content: "hello from conductor engine"

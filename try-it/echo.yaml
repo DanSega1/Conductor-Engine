@@ -1,4 +1,0 @@
-name: Echo smoke test
-capability: echo
-input:
-  message: hello from conductor

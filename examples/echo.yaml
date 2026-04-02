@@ -1,0 +1,7 @@
+# Demonstrates: the minimal echo capability smoke test.
+# Capabilities: echo
+# Run: cond run examples/echo.yaml
+name: Echo smoke test
+capability: echo
+input:
+  message: hello from conductor

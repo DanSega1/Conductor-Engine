@@ -1,7 +1,7 @@
 """Demo: WorkflowOrchestrator end-to-end with the echo capability.
 
 Run with:
-    .venv12/bin/python try-it/workflow-echo.py
+    python examples/workflow-echo.py
 """
 
 from __future__ import annotations

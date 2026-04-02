@@ -1,3 +1,6 @@
+# Demonstrates: a sequential workflow that executes two echo steps.
+# Capabilities: echo
+# Run: cond workflow run examples/workflow-echo.yaml
 goal: "Echo two messages in sequence"
 capabilities:
   - echo

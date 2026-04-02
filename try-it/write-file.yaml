@@ -1,6 +1,0 @@
-name: Write a note
-capability: filesystem
-input:
-  action: write_text
-  path: try-it/output/hello.txt
-  content: "hello from conductor engine"
