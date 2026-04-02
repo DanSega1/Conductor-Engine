@@ -20,6 +20,7 @@ cond = "cli.cond:main"
 
 [tool.setuptools.packages.find]
 include = ["cli*", "engine*"]
+exclude = ["tests*", "docs*", "examples*", "try-it*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

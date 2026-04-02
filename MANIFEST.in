@@ -1,0 +1,11 @@
+include README.md
+include pyproject.toml
+graft cli
+graft engine
+prune .github
+prune .squad
+prune docs
+prune examples
+prune tests
+prune try-it
+global-exclude __pycache__ *.py[cod] .DS_Store

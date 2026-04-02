@@ -77,8 +77,8 @@ profile_default/
 # Conductor runtime output
 .conductor/
 
-# try-it generated output
-try-it/output/
+# Example generated output
+examples/output/
 
 # Squad / Copilot internal tooling (not part of the product)
 .squad/

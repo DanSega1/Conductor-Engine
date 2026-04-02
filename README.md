@@ -2,6 +2,10 @@
 
 A minimal, installable orchestration runtime for task execution, capability loading, guardrails, storage abstractions, and future agent/policy layers.
 
+## AI Collaboration
+
+This project is AI-enhanced. A significant portion of the code, tests, and documentation was written with AI assistance as part of an intentional human-AI collaborative workflow.
+
 ## What It Includes
 
 - Generic task contracts and supervisor runtime
@@ -17,8 +21,8 @@ A minimal, installable orchestration runtime for task execution, capability load
 ```bash
 pip install -e .
 cond capability list
-cond run task.yaml
-cond task list
+cond run examples/echo.yaml
+cond workflow run examples/workflow-echo.yaml
 ```
 
 Example task:
@@ -38,8 +42,15 @@ Conductor-Engine/
   cli/
   docs/
   config/
+  examples/
   tests/
 ```
+
+## Docs and Examples
+
+- [Examples](examples/README.md) for runnable tasks and workflows
+- [Roadmap](docs/conductor/roadmap.md) for phase planning and backlog tracking
+- [PyPI](https://pypi.org/project/conductor-engine/) for published releases
 
 ## Built with Conductor Engine
 
@@ -50,6 +61,6 @@ Conductor-Engine/
 ## Automation
 
 - `.github/workflows/ci.yml` validates Conventional Commit messages, runs `ruff check .`, and runs `pytest tests/engine -q`.
-- `.github/workflows/release.yml` uses Python Semantic Release to calculate the next version, tag the release, build the package, and publish it to PyPI.
+- `.github/workflows/release.yml` runs only after `CI` succeeds on `main`, then uses Python Semantic Release to calculate the next version, tag the release, build the package, and publish it to PyPI.
 - PyPI publishing is configured for Trusted Publishing with the `.github/workflows/release.yml` workflow. On PyPI, register this repository and workflow as the trusted publisher. A GitHub environment is optional and is not required by the current workflow.
 - If you want the current `0.1.0` in `pyproject.toml` to be the baseline release, create and push `v0.1.0` before enabling the release workflow. Otherwise, semantic-release will calculate the next version from commit history.
