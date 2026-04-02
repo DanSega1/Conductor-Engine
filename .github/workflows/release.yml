@@ -1,22 +1,26 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
     branches:
       - main
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 jobs:
   release:
     name: Calculate Version and Build
     runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
 
     permissions:
       contents: write
@@ -29,12 +33,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6.1.0
         with:
           python-version: "3.12"
 
@@ -47,7 +52,7 @@ jobs:
 
       - name: Upload distribution artifacts
         if: steps.release.outputs.released == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6.0.0
         with:
           name: distribution-artifacts
           path: dist
@@ -66,7 +71,7 @@ jobs:
 
     steps:
       - name: Download distribution artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: distribution-artifacts
           path: dist
