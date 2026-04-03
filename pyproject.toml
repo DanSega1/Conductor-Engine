@@ -8,6 +8,11 @@ version = "0.8.0"
 description = "Minimal orchestration runtime extracted from the Home AI Control Plane."
 readme = "README.md"
 requires-python = ">=3.14"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
 dependencies = [
     "httpx>=0.27,<0.28",
     "pydantic>=2.6,<3",
