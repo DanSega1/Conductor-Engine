@@ -228,6 +228,8 @@ The `try-it/` directory name is not idiomatic. Replace it with `examples/`:
 
 ### README overhaul
 
+Status: done (2026-04-02) — Reworked the README with badges, banner artwork, architecture overview, AI disclosure, a Python 3.14 quick start, and stronger docs/examples links.
+
 The README needs a first-class presence for a published library. Items:
 - **Badges row** — CI status, PyPI version, Python versions, license, coverage (once wired)
   ```markdown
@@ -286,10 +288,12 @@ This checklist is enforced by convention, not automation, until Phase 3 delivers
 
 ### Python 3.14 upgrade + single venv
 
-- Bump `requires-python` in `pyproject.toml` from `>=3.12` to `>=3.14` once 3.14 reaches stable (expected October 2026)
+Status: done (2026-04-02) — Bumped the package and GitHub Actions to Python 3.14 and documented the single `.venv` bootstrap convention.
+
+- Bump `requires-python` in `pyproject.toml` from `>=3.12` to `>=3.14`
 - Update `actions/setup-python` target in `ci.yml` and `release.yml` to `python-version: "3.14"`
 - Add `3.14` to the Python version badge in the README
-- **Single venv rule**: the repo should have exactly one `.venv` directory (currently `.venv12/` from manual bootstrap). Convention going forward: `.venv/` at repo root, created with `python3.14 -m venv .venv`. Add `.venv*/` to `.gitignore` (already covered by `.venv*`) and document the bootstrap command in `README.md`. Delete `.venv12/` once the upgrade lands.
+- **Single venv rule**: the repo should have exactly one `.venv` directory. Convention going forward: `.venv/` at repo root, created with `python3.14 -m venv .venv`. Add `.venv*/` to `.gitignore` (already covered by `.venv*`) and document the bootstrap command in `README.md`.
 
 ---
 
