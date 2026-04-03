@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/DanSega1/Conductor-Engine/main/docs/assets/conductor-engine-banner.png" alt="Conductor Engine banner" width="600">
+  <img src="https://github.com/DanSega1/Conductor-Engine/blob/backlog-automation-examples/docs/assets/conductor-engine-banner.png" alt="Conductor Engine banner" width="600">
 </p>
 
 A minimal, installable orchestration runtime for task execution, capability loading, guardrails, storage abstractions, and future agent and policy layers.
