@@ -1,3 +1,6 @@
+# Demonstrates: retry behavior on a failing HTTP task.
+# Capabilities: http
+# Run: cond run examples/retry.yaml
 name: Retry on failure
 capability: http
 input:

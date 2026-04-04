@@ -1,0 +1,8 @@
+# Demonstrates: reading a file written by the companion filesystem example.
+# Capabilities: filesystem
+# Run: cond run examples/read-file.yaml
+name: Read the note back
+capability: filesystem
+input:
+  action: read_text
+  path: examples/output/hello.txt

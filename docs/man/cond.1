@@ -1,0 +1,71 @@
+.TH COND 1 "April 2026" "Conductor Engine" "User Commands"
+.SH NAME
+cond \- minimal orchestration runtime CLI
+.SH SYNOPSIS
+.B cond
+[\fB\-h\fR] [\fB\-\-help\fR] [\fB\-\-version\fR] [\fB\-\-store\fR \fIPATH\fR] [\fB\-\-config\fR \fIPATH\fR]
+\fICOMMAND\fR [\fIARGS\fR]
+.SH DESCRIPTION
+\fBcond\fR is the command-line interface for Conductor Engine.
+It runs tasks, executes workflows, lists capabilities, and inspects local task history.
+.PP
+Use \fBman cond\fR for the stable command reference.
+Use \fBcond help\fR for runtime-aware help, including capability topics derived from the currently loaded registry.
+.SH GLOBAL OPTIONS
+.TP
+.B \-h, \-\-help
+Show argparse usage help and exit.
+.TP
+.B \-\-version
+Print the installed \fBcond\fR version and exit.
+.TP
+.B \-\-store \fIPATH\fR
+Path to the local JSON task store.
+Defaults to \fB.conductor/tasks.json\fR.
+.TP
+.B \-\-config \fIPATH\fR
+Path to a capability configuration YAML file.
+.SH COMMANDS
+.TP
+.B cond run \fITASK\-FILE\fR
+Execute one YAML or JSON task file through the supervisor.
+.TP
+.B cond workflow run \fIWORKFLOW\-FILE\fR
+Execute a workflow YAML or JSON file through the planner, worker, supervisor, and validator flow.
+.TP
+.B cond capability list
+List every registered capability with risk level and tags.
+.TP
+.B cond task list
+List tasks saved in the local task store.
+.TP
+.B cond help [\fITOPIC\fR]
+Show offline dynamic help for commands and capabilities.
+Capability help is runtime-aware and remains available here instead of through separate manpages.
+.SH EXAMPLES
+.TP
+Run a basic task:
+.EX
+cond run examples/echo.yaml
+.EE
+.TP
+Run a workflow:
+.EX
+cond workflow run examples/workflow-echo.yaml
+.EE
+.TP
+Read static CLI reference:
+.EX
+man cond
+.EE
+.TP
+Read dynamic capability help:
+.EX
+cond help echo
+.EE
+.SH SEE ALSO
+.BR cond (1),
+.BR cond\ --help ,
+and
+.B cond help
+for runtime-aware capability and plugin topics.

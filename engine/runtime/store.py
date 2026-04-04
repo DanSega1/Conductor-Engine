@@ -2,11 +2,24 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
+import os
 from pathlib import Path
+import tempfile
 from typing import Protocol
 
 from engine.interfaces.task import TaskRecord
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX path
+    msvcrt = None
 
 
 class TaskStore(Protocol):
@@ -66,20 +79,72 @@ class LocalTaskStore:
 
     def __init__(self, path: str | Path = ".conductor/tasks.json") -> None:
         self.path = Path(path)
+        self._lock_path = self.path.with_suffix(f"{self.path.suffix}.lock")
 
-    def _read(self) -> dict[str, dict[str, object]]:
+    @contextmanager
+    def _locked(self) -> object:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock_path.open("a+", encoding="utf-8") as lock_file:
+            self._acquire_lock(lock_file)
+            try:
+                yield
+            finally:
+                self._release_lock(lock_file)
+
+    @staticmethod
+    def _acquire_lock(lock_file: object) -> None:
+        if fcntl is not None:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            return
+        if msvcrt is not None:  # pragma: no cover - Windows fallback
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+
+    @staticmethod
+    def _release_lock(lock_file: object) -> None:
+        if fcntl is not None:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            return
+        if msvcrt is not None:  # pragma: no cover - Windows fallback
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+
+    def _read_unlocked(self) -> dict[str, dict[str, object]]:
         if not self.path.exists():
             return {}
-        return json.loads(self.path.read_text())
+        raw = self.path.read_text()
+        if not raw.strip():
+            return {}
+        return json.loads(raw)
 
-    def _write(self, payload: dict[str, dict[str, object]]) -> None:
+    def _write_unlocked(self, payload: dict[str, dict[str, object]]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+        fd, tmp_name = tempfile.mkstemp(
+            dir=self.path.parent,
+            prefix=f".{self.path.name}.",
+            suffix=".tmp",
+            text=True,
+        )
+        tmp_path = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2, sort_keys=True)
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_path, self.path)
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
+
+    def _read(self) -> dict[str, dict[str, object]]:
+        with self._locked():
+            return self._read_unlocked()
 
     def save(self, task: TaskRecord) -> TaskRecord:
-        payload = self._read()
-        payload[task.task_id] = task.model_dump(mode="json")
-        self._write(payload)
+        with self._locked():
+            payload = self._read_unlocked()
+            payload[task.task_id] = task.model_dump(mode="json")
+            self._write_unlocked(payload)
         return task
 
     def get(self, task_id: str) -> TaskRecord | None:

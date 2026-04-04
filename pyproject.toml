@@ -7,7 +7,12 @@ name = "conductor-engine"
 version = "0.8.0"
 description = "Minimal orchestration runtime extracted from the Home AI Control Plane."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
 dependencies = [
     "httpx>=0.27,<0.28",
     "pydantic>=2.6,<3",
@@ -20,6 +25,10 @@ cond = "cli.cond:main"
 
 [tool.setuptools.packages.find]
 include = ["cli*", "engine*"]
+exclude = ["tests*", "docs*", "examples*", "try-it*"]
+
+[tool.setuptools.data-files]
+"share/man/man1" = ["docs/man/cond.1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

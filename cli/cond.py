@@ -6,7 +6,7 @@ import argparse
 from importlib.metadata import version as _pkg_version
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args, get_origin
 
 from rich.console import Console
 from rich.panel import Panel
@@ -28,6 +28,58 @@ DEFAULT_CONFIG = Path("config/conductor.capabilities.yaml")
 
 console = Console()
 err_console = Console(stderr=True)
+
+COMMAND_HELP_TOPICS: dict[str, dict[str, str]] = {
+    "run": {
+        "summary": "Execute a single task definition from YAML or JSON.",
+        "usage": "cond run <task-file>",
+        "details": (
+            "Task files define a name, capability, and input payload. "
+            "Use --store to isolate or inspect a specific local task store."
+        ),
+        "example": (
+            "name: Echo smoke test\n"
+            "capability: echo\n"
+            "input:\n"
+            "  message: hello from conductor"
+        ),
+    },
+    "workflow": {
+        "summary": "Execute a workflow YAML through the planner/worker/validator path.",
+        "usage": "cond workflow run <workflow-file>",
+        "details": (
+            "Workflow files define a top-level goal and an ordered list of steps. "
+            "Each step is converted into a TaskSubmission and executed by the supervisor."
+        ),
+        "example": (
+            "goal: Echo two messages in sequence\n"
+            "capabilities:\n"
+            "  - echo\n"
+            "steps:\n"
+            "  - name: echo-hello\n"
+            "    capability: echo\n"
+            "    input:\n"
+            "      message: hello from workflow"
+        ),
+    },
+    "capability": {
+        "summary": "Inspect registered capabilities.",
+        "usage": "cond capability list",
+        "details": "Lists every loaded capability with its risk level and tags.",
+        "example": "cond capability list",
+    },
+    "task": {
+        "summary": "Inspect tasks saved in the local JSON task store.",
+        "usage": "cond task list",
+        "details": (
+            "Task history is read from .conductor/tasks.json by default. "
+            "Use --store to point at a different local store file."
+        ),
+        "example": "cond --store /tmp/tasks.json task list",
+    },
+}
+
+MAN_PAGE_HINT = "See `man cond` for the static CLI reference."
 
 
 def _load_yaml_or_json(path: str | Path) -> dict[str, Any]:
@@ -147,6 +199,151 @@ def _task_list_table(supervisor: TaskSupervisor) -> None:
     console.print(table)
 
 
+def _type_label(annotation: Any) -> str:
+    origin = get_origin(annotation)
+    if origin is None:
+        if hasattr(annotation, "__name__"):
+            return str(annotation.__name__)
+        text = str(annotation)
+        return text.replace("typing.", "")
+    if origin in {list, set, tuple}:
+        args = ", ".join(_type_label(arg) for arg in get_args(annotation))
+        return f"{origin.__name__}[{args}]"
+    if origin is dict:
+        args = ", ".join(_type_label(arg) for arg in get_args(annotation))
+        return f"dict[{args}]"
+    if origin is type(None):
+        return "None"
+    args = [_type_label(arg) for arg in get_args(annotation)]
+    if str(origin).endswith("Literal"):
+        return " | ".join(args)
+    if str(origin).endswith("Union"):
+        return " | ".join(args)
+    name = getattr(origin, "__name__", str(origin).replace("typing.", ""))
+    return f"{name}[{', '.join(args)}]"
+
+
+def _example_value(annotation: Any) -> str:
+    origin = get_origin(annotation)
+    args = get_args(annotation)
+    if str(origin).endswith("Literal") and args:
+        return repr(args[0])
+    if origin in {list, set, tuple}:
+        return "[]"
+    if origin is dict:
+        return "{}"
+    if str(origin).endswith("Union"):
+        non_none = [arg for arg in args if arg is not type(None)]
+        return _example_value(non_none[0]) if non_none else "null"
+    if annotation in {str, Any}:
+        return "<value>"
+    if annotation is int:
+        return "0"
+    if annotation is float:
+        return "0.0"
+    if annotation is bool:
+        return "false"
+    return "<value>"
+
+
+def _capability_example_yaml(name: str, capability: Any) -> str:
+    lines = ["name: Example task", f"capability: {name}", "input:"]
+    if capability.input_model is None:
+        lines.append("  {}")
+        return "\n".join(lines)
+    for field_name, field in capability.input_model.model_fields.items():
+        lines.append(f"  {field_name}: {_example_value(field.annotation)}")
+    return "\n".join(lines)
+
+
+def _capability_manual(topic: str, registry: CapabilityRegistry) -> bool:
+    try:
+        capability = registry.get(topic)
+    except KeyError:
+        return False
+
+    descriptor = capability.descriptor
+    summary = Table.grid(padding=(0, 2))
+    summary.add_column(min_width=12)
+    summary.add_column()
+    summary.add_row(Text("name", style="bold"), descriptor.name)
+    summary.add_row(Text("risk", style="bold"), descriptor.risk_level)
+    summary.add_row(Text("tags", style="bold"), ", ".join(descriptor.tags) or "-")
+    summary.add_row(Text("summary", style="bold"), descriptor.description)
+
+    console.print(Panel(summary, title=f"help {topic}", border_style="blue"))
+
+    if capability.input_model is not None:
+        table = Table(show_header=True, header_style="bold", box=None, pad_edge=True)
+        table.add_column("Field")
+        table.add_column("Type")
+        table.add_column("Required")
+        table.add_column("Default")
+        for field_name, field in capability.input_model.model_fields.items():
+            default = "-" if field.is_required() else _format_output(field.default)
+            table.add_row(
+                field_name,
+                _type_label(field.annotation),
+                "yes" if field.is_required() else "no",
+                default,
+            )
+        console.print(table)
+
+    manual_text = capability.man_page()
+    if manual_text:
+        console.print(Panel(manual_text, title="details", border_style="cyan"))
+
+    console.print(Panel(_capability_example_yaml(topic, capability), title="example", border_style="green"))
+    console.print(Panel(MAN_PAGE_HINT, title="see also", border_style="cyan"))
+    return True
+
+
+def _command_manual(topic: str) -> bool:
+    manual = COMMAND_HELP_TOPICS.get(topic)
+    if manual is None:
+        return False
+
+    summary = Table.grid(padding=(0, 2))
+    summary.add_column(min_width=12)
+    summary.add_column()
+    summary.add_row(Text("topic", style="bold"), topic)
+    summary.add_row(Text("usage", style="bold"), manual["usage"])
+    summary.add_row(Text("summary", style="bold"), manual["summary"])
+    summary.add_row(Text("details", style="bold"), manual["details"])
+    console.print(Panel(summary, title=f"help {topic}", border_style="blue"))
+    console.print(Panel(manual["example"], title="example", border_style="green"))
+    console.print(Panel(MAN_PAGE_HINT, title="see also", border_style="cyan"))
+    return True
+
+
+def _help_index(registry: CapabilityRegistry) -> None:
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=True)
+    table.add_column("Topic")
+    table.add_column("Kind")
+    table.add_column("Summary")
+
+    for topic, manual in sorted(COMMAND_HELP_TOPICS.items()):
+        table.add_row(topic, "command", manual["summary"])
+
+    for descriptor in registry.list():
+        table.add_row(descriptor.name, "capability", descriptor.description)
+
+    console.print(Panel(table, title="cond help", border_style="blue"))
+    console.print(Panel(MAN_PAGE_HINT, title="see also", border_style="cyan"))
+
+
+def _render_help(topic: str | None, registry: CapabilityRegistry) -> int:
+    if topic is None:
+        _help_index(registry)
+        return 0
+    if _command_manual(topic):
+        return 0
+    if _capability_manual(topic, registry):
+        return 0
+    err_console.print(f"Unknown help topic: {topic}")
+    return 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cond", description="Conductor Engine CLI")
     parser.add_argument(
@@ -184,6 +381,9 @@ def build_parser() -> argparse.ArgumentParser:
     workflow_subparsers = workflow_parser.add_subparsers(dest="workflow_command", required=True)
     wf_run = workflow_subparsers.add_parser("run", help="Execute a workflow file.")
     wf_run.add_argument("workflow_file", help="Path to a YAML or JSON workflow file.")
+
+    help_parser = subparsers.add_parser("help", help="Show offline help topics.")
+    help_parser.add_argument("topic", nargs="?", help="Optional command or capability topic.")
 
     return parser
 
@@ -227,6 +427,9 @@ def main(argv: list[str] | None = None) -> int:
         result = orchestrator.run(goal)
         _workflow_result_panel(result)
         return 0
+
+    if args.command == "help":
+        return _render_help(args.topic, registry)
 
     parser.error("Unsupported command")
     return 2

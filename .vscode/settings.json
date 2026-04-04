@@ -1,4 +1,18 @@
 {
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "terminal.integrated.profiles.osx": {
+        "zsh (Conductor .venv)": {
+            "path": "zsh",
+            "args": [
+                "-l",
+                "-c",
+                "source '${workspaceFolder}/.venv/bin/activate' && exec zsh -l"
+            ],
+            "overrideName": true
+        }
+    },
+    "terminal.integrated.defaultProfile.osx": "zsh (Conductor .venv)",
     "chat.tools.terminal.autoApprove": {
         "/^python -m pytest tests/engine/test_event_bus\\.py -q --tb=short 2>&1$/": {
             "approve": true,
