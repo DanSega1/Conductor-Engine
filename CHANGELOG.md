@@ -2,6 +2,50 @@
 
 <!-- version list -->
 
+## v0.10.0 (2026-04-14)
+
+### Features
+
+- **capabilities**: ✨ Add MCPCapability and update exports
+  ([`1b8c0fb`](https://github.com/DanSega1/Conductor-Engine/commit/1b8c0fbcb49e151c649947c6499d6ceaf5608cbb))
+
+- **cli**: ✨ Enhance task management commands and add health check functionality
+  ([`48579f5`](https://github.com/DanSega1/Conductor-Engine/commit/48579f59e368c087896a59a8a73177dd5d0fdd04))
+
+- **config**: ✨ Add optional runtime execution controls documentation
+  ([`2984d72`](https://github.com/DanSega1/Conductor-Engine/commit/2984d72896901effa9d544daccf5d0c4ff08aae6))
+
+- **dependencies**: ✨ Add optional dependencies for PostgreSQL and Redis
+  ([`cf03c24`](https://github.com/DanSega1/Conductor-Engine/commit/cf03c24a004986bb1a973661dbbf3f5b120236d4))
+
+- **docs**: ✨ Add design integrity document for cross-phase invariants
+  ([`f3a9470`](https://github.com/DanSega1/Conductor-Engine/commit/f3a94704ec1b195c6d5e527100293d14ddf41581))
+
+- **docs**: ✨ Update design integrity and roadmap for Phase 3 completion
+  ([`a082606`](https://github.com/DanSega1/Conductor-Engine/commit/a082606f5ddebb54c3faa2c3b766eecebc86d430))
+
+- **docs**: ✨ Update roadmap and README with Phase 3 details and examples
+  ([`dbe1f55`](https://github.com/DanSega1/Conductor-Engine/commit/dbe1f55e5af52082621574059fcddcbcdfcfa853))
+
+- **examples**: ✨ Add new examples for capability execution controls and parallel workflows
+  ([`2b43fe5`](https://github.com/DanSega1/Conductor-Engine/commit/2b43fe5a89eb6bdff5c5c0f05e551e8db15008dc))
+
+- **interfaces**: ✨ Enhance capability and policy interfaces
+  ([`1cdd90d`](https://github.com/DanSega1/Conductor-Engine/commit/1cdd90d8d2fc05877171f5d709f90b78b7ced03d))
+
+- **loader**: ✨ Enhance capability loading with execution controls
+  ([`ae23b85`](https://github.com/DanSega1/Conductor-Engine/commit/ae23b853c60fc791a7a24690e2030132a2a24177))
+
+- **roadmap**: ✨ Document isolated capability execution for timeouts and cancellation
+  ([`b50475b`](https://github.com/DanSega1/Conductor-Engine/commit/b50475b1ec9dd69707ac36c94e62705133e90777))
+
+- **runtime**: ✨ Add health check methods and new task stores
+  ([`727d315`](https://github.com/DanSega1/Conductor-Engine/commit/727d315c1ebdf74706b258fe20d20d12b07347b3))
+
+- **tests**: ✨ Add comprehensive tests for task management and workflow handling
+  ([`9c2fb53`](https://github.com/DanSega1/Conductor-Engine/commit/9c2fb5337e403c10899ca73f57d594d47fe9e49c))
+
+
 ## v0.9.0 (2026-04-04)
 
 ### Bug Fixes
