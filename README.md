@@ -22,6 +22,20 @@ A minimal, installable orchestration runtime for task execution, capability load
 
 This project is AI-enhanced. A significant portion of the code, tests, and documentation was written with AI assistance as part of an intentional human-AI collaborative workflow.
 
+## Roadmap Status
+
+| Phase | Status | Focus |
+| --- | --- | --- |
+| [Phase 1: Core Runtime](docs/conductor/roadmap.md#phase-1--core-runtime-complete) | Complete | Single-process task execution, core capabilities, guardrails, local storage, and baseline CLI support. |
+| [Phase 2: Workflow Layer](docs/conductor/roadmap.md#phase-2--workflow-layer-complete) | Complete | Planner, worker, validator, and orchestrator contracts over the existing supervisor path. |
+| [Phase 3: Production Hardening](docs/conductor/roadmap.md#phase-3--production-hardening-complete) | Complete | Observability, policies, pluggable stores, approvals, and parallel workflow execution. |
+| [Phase 4: TUI](docs/conductor/roadmap.md#phase-4--tui-future) | Planned | Terminal-first operations and live visibility into a running Conductor instance. |
+| [Phase 5: Autonomous Operation](docs/conductor/roadmap.md#phase-5--autonomous-operation) | Planned | Self-enforcing policy, recovery, auditability, and unattended execution paths. |
+| [Phase 6: Guild Layer](docs/conductor/roadmap.md#phase-6--guild-layer) | Planned | Cross-project failure learning and role-scoped knowledge sharing. |
+| [Phase 7: Remote Deployment and Protected Operation](docs/conductor/roadmap.md#phase-7--remote-deployment-and-protected-operation) | Planned | Remote-first API, protected multi-tenant operation, and hardened deployment targets. |
+
+See the [full roadmap](docs/conductor/roadmap.md) for phase scope, rationale, and backlog details.
+
 ## Quick Start
 
 ```bash
@@ -76,6 +90,7 @@ sequenceDiagram
 ## Docs And Examples
 
 - [Examples](examples/README.md) for runnable tasks and workflows.
+- Phase 3 examples: [workflow-parallel.yaml](examples/workflow-parallel.yaml) shows parallel fan-out with a barrier step, and [capability-execution-controls.yaml](examples/capability-execution-controls.yaml) shows per-capability execution controls for `cond --config`.
 - [Roadmap](docs/conductor/roadmap.md) for phase planning and backlog tracking.
 - [Architecture diagrams](docs/conductor/architecture-diagrams.md) for the full system view.
 - [CLI reference](docs/conductor/cond-cli.md) for command-focused documentation.

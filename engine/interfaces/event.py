@@ -19,6 +19,11 @@ class EventType(StrEnum):
     TASK_STARTED = "task_started"
     TASK_COMPLETED = "task_completed"
     TASK_FAILED = "task_failed"
+    TASK_RETRY = "task_retry"
+    TASK_POLICY_DENIED = "task_policy_denied"
+    TASK_AWAITING_APPROVAL = "task_awaiting_approval"
+    TASK_APPROVED = "task_approved"
+    TASK_CANCELLED = "task_cancelled"
 
 
 class TaskEvent(BaseModel):

@@ -35,3 +35,13 @@ def test_cond_manpage_source_exists() -> None:
 
     assert manpage.exists()
     assert ".TH COND 1" in manpage.read_text()
+
+
+def test_pyproject_declares_optional_store_dependencies() -> None:
+    config = tomllib.loads(Path("pyproject.toml").read_text())
+
+    optional = config["project"]["optional-dependencies"]
+
+    assert optional["postgres"] == ["psycopg>=3,<4"]
+    assert optional["redis"] == ["redis>=5,<6"]
+    assert optional["stores"] == ["psycopg>=3,<4", "redis>=5,<6"]

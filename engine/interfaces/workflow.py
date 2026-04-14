@@ -38,11 +38,13 @@ class PlanStep(BaseModel):
 
     ``input_hint`` is advisory: the worker refines it into a concrete
     ``TaskSubmission`` before handing off to the supervisor.
+    ``parallel_group`` batches adjacent steps into a synchronized fan-out.
     """
 
     name: str
     capability: str
     input_hint: dict[str, Any] = Field(default_factory=dict)
+    parallel_group: str | None = None
 
 
 # ---------------------------------------------------------------------------

@@ -41,10 +41,12 @@ A user says: *"Save this URL to my research bookmarks."* The system plans it, op
 
 ## Task State Machine
 
-The app extends the engine's base states with approval and policy states:
+The app extends the engine with domain-specific planning states, but the approval and policy states now exist in the engine itself:
 
 ```
-Engine today:     PENDING → RUNNING → COMPLETED / FAILED
+Engine today:     PENDING → AWAITING_APPROVAL → APPROVED → RUNNING → COMPLETED / FAILED
+                      \            ↘ CANCELLED
+                       ↘ POLICY_DENIED
 
 App today:        PENDING → PLANNING → AWAITING_APPROVAL → APPROVED
                                       ↘ REJECTED          ↓
@@ -53,7 +55,7 @@ App today:        PENDING → PLANNING → AWAITING_APPROVAL → APPROVED
                                                       EXECUTING → COMPLETED / FAILED / CANCELLED
 ```
 
-The additional states (`AWAITING_APPROVAL`, `APPROVED`, `POLICY_DENIED`) are planned engine additions — see the pre-Phase-3 roadmap.
+The additional engine states (`AWAITING_APPROVAL`, `APPROVED`, `POLICY_DENIED`, `CANCELLED`) landed during Phase 3.
 
 ---
 
@@ -71,11 +73,11 @@ The additional states (`AWAITING_APPROVAL`, `APPROVED`, `POLICY_DENIED`) are pla
 
 | Gap | Priority | When |
 |---|---|---|
-| `TaskStatus` needs `AWAITING_APPROVAL`, `APPROVED`, `POLICY_DENIED`, `CANCELLED` | High | Pre-Phase-3 |
-| `audit_trail: list[AuditEntry]` on `TaskRecord` — full transition history | High | Pre-Phase-3 |
-| `PolicyEngine` interface — `authorize(action, context) → PolicyDecision` | High | Phase 3 (moved up from Phase 5) |
-| Approval flow — suspension model for `AWAITING_APPROVAL` state | Medium | Phase 3 |
-| `MCPCapability` — wraps any MCP server as a Capability | Medium | Phase 3 optional extra (`conductor-mcp`) |
+| `TaskStatus` needs `AWAITING_APPROVAL`, `APPROVED`, `POLICY_DENIED`, `CANCELLED` | High | Landed in Phase 3 |
+| `audit_trail: list[AuditEntry]` on `TaskRecord` — full transition history | High | Landed in Phase 3 |
+| `PolicyEngine` interface — `authorize(action, context) → PolicyDecision` | High | Landed in Phase 3 |
+| Approval flow — suspension model for `AWAITING_APPROVAL` state | Medium | Landed in Phase 3 |
+| `MCPCapability` — wraps any MCP server as a Capability | Medium | Phase 3 seam landed in core; transport stays in `conductor-mcp` |
 | MongoDB `TaskStore` adapter | Medium | Phase 3 optional extra (`conductor-engine[mongo]`) |
 | Budget / cost tracking on `TaskRecord` | Low | Phase 5 |
 

@@ -7,10 +7,13 @@ no hardcoded behaviour.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from engine.interfaces.task import TaskStatus
 from engine.interfaces.workflow import (
     PlannerContext,
     PlannerInterface,
+    PlanStep,
     ValidatorContext,
     ValidatorInterface,
     WorkerContext,
@@ -37,6 +40,42 @@ class WorkflowOrchestrator:
         self.validator = validator
         self.supervisor = supervisor
 
+    def _run_step(
+        self,
+        *,
+        step: PlanStep,
+        workflow_id: str,
+        prior_results: list,
+    ):
+        worker_context = WorkerContext(
+            workflow_id=workflow_id,
+            step=step,
+            prior_results=list(prior_results),
+        )
+        response = self.worker.work(step.name, worker_context)
+        submission = response.submission.model_copy(update={"workflow_id": workflow_id})
+        return self.supervisor.run_submission(submission)
+
+    @staticmethod
+    def _step_batches(steps: list[PlanStep]) -> list[list[PlanStep]]:
+        batches: list[list[PlanStep]] = []
+        index = 0
+        while index < len(steps):
+            step = steps[index]
+            if step.parallel_group is None:
+                batches.append([step])
+                index += 1
+                continue
+
+            group_name = step.parallel_group
+            batch = [step]
+            index += 1
+            while index < len(steps) and steps[index].parallel_group == group_name:
+                batch.append(steps[index])
+                index += 1
+            batches.append(batch)
+        return batches
+
     def run(self, goal: WorkflowGoal) -> WorkflowResult:
         planner_context = PlannerContext(
             workflow_id=goal.workflow_id,
@@ -48,17 +87,32 @@ class WorkflowOrchestrator:
         records = []
         status = WorkflowStatus.RUNNING
 
-        for step in plan.steps:
-            worker_context = WorkerContext(
-                workflow_id=goal.workflow_id,
-                step=step,
-                prior_results=list(records),
-            )
-            response = self.worker.work(step.name, worker_context)
-            record = self.supervisor.run_submission(response.submission)
-            records.append(record)
+        for batch in self._step_batches(plan.steps):
+            prior_results = list(records)
+            if len(batch) == 1:
+                batch_records = [
+                    self._run_step(
+                        step=batch[0],
+                        workflow_id=goal.workflow_id,
+                        prior_results=prior_results,
+                    )
+                ]
+            else:
+                with ThreadPoolExecutor(max_workers=len(batch)) as executor:
+                    futures = [
+                        executor.submit(
+                            self._run_step,
+                            step=step,
+                            workflow_id=goal.workflow_id,
+                            prior_results=prior_results,
+                        )
+                        for step in batch
+                    ]
+                    batch_records = [future.result() for future in futures]
 
-            if record.status == TaskStatus.FAILED:
+            records.extend(batch_records)
+
+            if any(record.status == TaskStatus.FAILED for record in batch_records):
                 status = WorkflowStatus.FAILED
                 break
 

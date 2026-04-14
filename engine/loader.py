@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 from engine.capabilities import EchoCapability, FilesystemCapability, HttpCapability
-from engine.interfaces.capability import Capability
+from engine.interfaces.capability import Capability, CapabilityExecutionControls
 from engine.registry.capabilities import CapabilityRegistry
 
 
@@ -54,7 +54,16 @@ def load_capabilities_from_file(
         if "base_path" in config:
             config["base_path"] = str((config_path.parent / config["base_path"]).resolve())
         capability_class = _import_object(import_path)
-        registry.register(capability_class(**config))
+        controls = None
+        if "execution" in entry:
+            controls = CapabilityExecutionControls.model_validate(entry["execution"])
+        registry.register(capability_class(**config), execution_controls=controls)
+
+    for capability_name, controls in data.get("execution_controls", {}).items():
+        registry.set_execution_controls(
+            capability_name,
+            CapabilityExecutionControls.model_validate(controls),
+        )
 
     return registry
 

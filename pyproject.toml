@@ -20,6 +20,11 @@ dependencies = [
     "rich>=13",
 ]
 
+[project.optional-dependencies]
+postgres = ["psycopg>=3,<4"]
+redis = ["redis>=5,<6"]
+stores = ["psycopg>=3,<4", "redis>=5,<6"]
+
 [project.scripts]
 cond = "cli.cond:main"
 
@@ -32,7 +37,6 @@ exclude = ["tests*", "docs*", "examples*", "try-it*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = "auto"
 pythonpath = ["."]
 addopts = "-v --tb=short"
 

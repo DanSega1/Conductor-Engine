@@ -34,6 +34,13 @@ class CapabilityResult(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class CapabilityExecutionControls(BaseModel):
+    """Runtime-configured execution controls applied by the supervisor."""
+
+    timeout_seconds: float | None = Field(default=None, gt=0)
+    min_interval_seconds: float | None = Field(default=None, ge=0)
+
+
 class Capability(ABC):
     """Base class for all runtime capabilities."""
 

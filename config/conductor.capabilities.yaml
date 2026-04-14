@@ -2,6 +2,13 @@ include_builtins: true
 
 # Additive plugin config for the generic Conductor Engine runtime.
 # Built-ins ship automatically; this file exists to demonstrate dynamic loading.
+
+# Optional runtime execution controls keyed by capability name.
+# execution_controls:
+#   http:
+#     timeout_seconds: 5
+#     min_interval_seconds: 0.25
+
 capabilities: []
 
 # Example optional memU-backed memory capability:

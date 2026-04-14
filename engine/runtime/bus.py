@@ -19,11 +19,14 @@ class NullEventBus:
     def emit(self, event: TaskEvent) -> None:
         return
 
+    def health_check(self) -> list[str]:
+        return []
+
 
 class LoggingEventBus:
     """Emits task events as structured log entries via Python's logging module.
 
-    Each event is logged at INFO level (FAILED events at WARNING).
+    Each event is logged at INFO level, with failure-class events at WARNING.
     Structured fields are included in the ``extra`` dict so log formatters
     and handlers can surface them in JSON, OTLP, or plain text.
     """
@@ -41,9 +44,10 @@ class LoggingEventBus:
             "attempt": event.attempt,
             "workflow_id": event.workflow_id,
         }
-        if event.event_type == EventType.TASK_FAILED:
+        if event.event_type in {EventType.TASK_FAILED, EventType.TASK_POLICY_DENIED}:
             self._log.warning(
-                "task_failed task_id=%s name=%s error=%s attempt=%d",
+                "%s task_id=%s name=%s error=%s attempt=%d",
+                event.event_type,
                 event.task_id,
                 event.task_name,
                 event.error,
@@ -59,3 +63,6 @@ class LoggingEventBus:
                 event.attempt,
                 extra=extra,
             )
+
+    def health_check(self) -> list[str]:
+        return []

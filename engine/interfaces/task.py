@@ -40,6 +40,7 @@ class TaskSubmission(BaseModel):
     input: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
     max_retries: int = 0
+    workflow_id: str | None = None
 
 
 class TaskResult(BaseModel):

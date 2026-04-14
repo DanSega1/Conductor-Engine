@@ -1,0 +1,25 @@
+# Demonstrates: adjacent steps in the same parallel_group fan out together,
+# then a later filesystem step acts as the sequential barrier.
+# Capabilities: echo, filesystem
+# Run: cond workflow run examples/workflow-parallel.yaml
+goal: "Run a built-in fan-out workflow with a barrier step"
+capabilities:
+  - echo
+  - filesystem
+steps:
+  - name: echo-left-branch
+    capability: echo
+    parallel_group: fanout
+    input:
+      message: left branch reached the fan-out batch
+  - name: echo-right-branch
+    capability: echo
+    parallel_group: fanout
+    input:
+      message: right branch reached the fan-out batch
+  - name: write-barrier-marker
+    capability: filesystem
+    input:
+      action: write_text
+      path: examples/output/parallel-barrier.txt
+      content: parallel group finished; barrier step ran after both echo branches

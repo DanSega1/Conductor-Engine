@@ -8,5 +8,6 @@ class PassthroughWorker:
             name=step_name,
             capability=context.step.capability,
             input=context.step.input_hint,
+            workflow_id=context.workflow_id,
         )
         return WorkerResponse(submission=submission)

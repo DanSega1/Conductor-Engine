@@ -15,6 +15,8 @@ Flow under test:
 from __future__ import annotations
 
 from pathlib import Path
+import threading
+import time
 
 from engine.interfaces.task import TaskRecord, TaskResult, TaskStatus, TaskSubmission
 from engine.interfaces.workflow import (
@@ -106,6 +108,58 @@ class FailingTaskSupervisor:
         )
 
 
+class ParallelTrackingSupervisor:
+    """Supervisor stub that records whether submissions overlap in time."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._active = 0
+        self.max_active = 0
+
+    def run_submission(self, submission: TaskSubmission) -> TaskRecord:
+        with self._lock:
+            self._active += 1
+            self.max_active = max(self.max_active, self._active)
+        time.sleep(0.05)
+        with self._lock:
+            self._active -= 1
+        return TaskRecord(
+            name=submission.name,
+            capability=submission.capability,
+            input=submission.input,
+            workflow_id=submission.workflow_id,
+            status=TaskStatus.COMPLETED,
+            result=TaskResult(success=True, output=submission.input),
+        )
+
+
+class MixedOutcomeSupervisor:
+    """Supervisor stub that fails selected capabilities while preserving batch execution."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def run_submission(self, submission: TaskSubmission) -> TaskRecord:
+        self.calls.append(submission.name)
+        if submission.capability == "fail":
+            return TaskRecord(
+                name=submission.name,
+                capability=submission.capability,
+                input=submission.input,
+                workflow_id=submission.workflow_id,
+                status=TaskStatus.FAILED,
+                result=TaskResult(success=False, error="forced failure"),
+            )
+        return TaskRecord(
+            name=submission.name,
+            capability=submission.capability,
+            input=submission.input,
+            workflow_id=submission.workflow_id,
+            status=TaskStatus.COMPLETED,
+            result=TaskResult(success=True, output=submission.input),
+        )
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -135,6 +189,19 @@ def test_orchestrator_result_uses_goal_workflow_id(tmp_path: Path) -> None:
     result = WorkflowOrchestrator(planner, worker, validator, supervisor).run(goal)
 
     assert result.workflow_id == goal.workflow_id
+
+
+def test_orchestrator_propagates_workflow_id_to_task_records(tmp_path: Path) -> None:
+    planner = StubPlanner([_echo_step()])
+    worker = CapturingWorker()
+    validator = CapturingValidator()
+    supervisor = _make_supervisor(tmp_path)
+    goal = WorkflowGoal(goal="task linkage check")
+
+    result = WorkflowOrchestrator(planner, worker, validator, supervisor).run(goal)
+
+    assert len(result.records) == 1
+    assert result.records[0].workflow_id == goal.workflow_id
 
 
 def test_orchestrator_fails_fast_on_failed_task() -> None:
@@ -210,3 +277,44 @@ def test_orchestrator_skips_validator_on_failure() -> None:
 
     assert result.status == WorkflowStatus.FAILED
     assert validator.received_contexts == []
+
+
+def test_orchestrator_runs_parallel_group_steps_concurrently() -> None:
+    planner = StubPlanner(
+        [
+            PlanStep(name="step-a", capability="echo", input_hint={"message": "a"}, parallel_group="fanout"),
+            PlanStep(name="step-b", capability="echo", input_hint={"message": "b"}, parallel_group="fanout"),
+            PlanStep(name="step-c", capability="echo", input_hint={"message": "c"}),
+        ]
+    )
+    worker = CapturingWorker()
+    validator = CapturingValidator()
+    supervisor = ParallelTrackingSupervisor()
+    goal = WorkflowGoal(goal="parallel group")
+
+    result = WorkflowOrchestrator(planner, worker, validator, supervisor).run(goal)
+
+    assert result.status == WorkflowStatus.COMPLETED
+    assert [record.name for record in result.records] == ["step-a", "step-b", "step-c"]
+    assert supervisor.max_active >= 2
+
+
+def test_orchestrator_finishes_parallel_batch_before_failing_later_groups() -> None:
+    planner = StubPlanner(
+        [
+            PlanStep(name="step-a", capability="echo", input_hint={"message": "a"}, parallel_group="fanout"),
+            PlanStep(name="step-b", capability="fail", input_hint={"message": "b"}, parallel_group="fanout"),
+            PlanStep(name="step-c", capability="echo", input_hint={"message": "c"}),
+        ]
+    )
+    worker = CapturingWorker()
+    validator = CapturingValidator()
+    supervisor = MixedOutcomeSupervisor()
+    goal = WorkflowGoal(goal="parallel batch failure")
+
+    result = WorkflowOrchestrator(planner, worker, validator, supervisor).run(goal)
+
+    assert result.status == WorkflowStatus.FAILED
+    assert [record.name for record in result.records] == ["step-a", "step-b"]
+    assert validator.received_contexts == []
+    assert supervisor.calls == ["step-a", "step-b"]

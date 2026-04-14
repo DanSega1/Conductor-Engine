@@ -107,6 +107,28 @@ def test_memory_capability_uses_provider_for_retrieve() -> None:
     ]
 
 
+def test_memory_capability_runs_inside_active_event_loop() -> None:
+    class FakeProvider:
+        async def memorize(self, documents):  # pragma: no cover - unused
+            return [{"documents": len(documents)}]
+
+        async def retrieve(self, query):
+            return [MemoryHit(external_id="loop-1", content=query.query, metadata={})]
+
+    async def exercise() -> None:
+        capability = MemoryCapability(provider=FakeProvider())
+
+        result = capability.execute(
+            {"action": "retrieve", "query": {"query": "async host", "namespaces": ["pkm"]}},
+            CapabilityContext(task_id="task-2", task_name="memory search", workdir="."),
+        )
+
+        assert result.output[0]["external_id"] == "loop-1"
+        assert result.output[0]["content"] == "async host"
+
+    asyncio.run(exercise())
+
+
 def test_load_capabilities_from_file_supports_memory_plugin(tmp_path: Path) -> None:
     config_path = tmp_path / "capabilities.yaml"
     config_path.write_text(

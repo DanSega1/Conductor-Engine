@@ -5,10 +5,12 @@ from engine.interfaces.capability import (
     Capability,
     CapabilityContext,
     CapabilityDescriptor,
+    CapabilityExecutionControls,
     CapabilityResult,
 )
 from engine.interfaces.event import EventBus, EventType, TaskEvent
 from engine.interfaces.memory import MemoryDocument, MemoryHit, MemoryProvider, MemoryQuery
+from engine.interfaces.policy import PolicyContext, PolicyDecision, PolicyDecisionType, PolicyEngine
 from engine.interfaces.task import (
     AuditEntry,
     RiskLevel,
@@ -42,6 +44,7 @@ __all__ = [
     "Capability",
     "CapabilityContext",
     "CapabilityDescriptor",
+    "CapabilityExecutionControls",
     "CapabilityResult",
     "EventBus",
     "EventType",
@@ -53,6 +56,10 @@ __all__ = [
     "PlanStep",
     "PlannerContext",
     "PlannerInterface",
+    "PolicyContext",
+    "PolicyDecision",
+    "PolicyDecisionType",
+    "PolicyEngine",
     "RiskLevel",
     "TaskEvent",
     "TaskRecord",

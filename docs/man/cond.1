@@ -7,7 +7,8 @@ cond \- minimal orchestration runtime CLI
 \fICOMMAND\fR [\fIARGS\fR]
 .SH DESCRIPTION
 \fBcond\fR is the command-line interface for Conductor Engine.
-It runs tasks, executes workflows, lists capabilities, and inspects local task history.
+It runs tasks, executes workflows, lists capabilities, inspects local task history,
+and surfaces component health checks.
 .PP
 Use \fBman cond\fR for the stable command reference.
 Use \fBcond help\fR for runtime-aware help, including capability topics derived from the currently loaded registry.
@@ -38,6 +39,22 @@ List every registered capability with risk level and tags.
 .TP
 .B cond task list
 List tasks saved in the local task store.
+Supports \fB\-\-limit\fR, \fB\-\-offset\fR, and \fB\-\-status\fR filters.
+.TP
+.B cond task show \fITASK\-ID\fR
+Show one stored task in detail, including workflow linkage and audit trail.
+Accepts a full task id or a unique prefix from the list view.
+.TP
+.B cond task approve \fITASK\-ID\fR
+Approve a task in \fBAWAITING_APPROVAL\fR state.
+By default the supervisor immediately resumes execution; use \fB\-\-no\-run\fR to only record approval.
+.TP
+.B cond task cancel \fITASK\-ID\fR
+Cancel a task in \fBAWAITING_APPROVAL\fR state.
+.TP
+.B cond health
+Run \fBhealth_check()\fR across the CLI-facing runtime components.
+Returns exit code 0 when healthy and 1 when any issues are reported.
 .TP
 .B cond help [\fITOPIC\fR]
 Show offline dynamic help for commands and capabilities.
@@ -52,6 +69,21 @@ cond run examples/echo.yaml
 Run a workflow:
 .EX
 cond workflow run examples/workflow-echo.yaml
+.EE
+.TP
+Inspect approval-gated tasks:
+.EX
+cond task list --status awaiting_approval
+.EE
+.TP
+Approve a task by id prefix:
+.EX
+cond task approve 4df2c8ab
+.EE
+.TP
+Run health checks:
+.EX
+cond health
 .EE
 .TP
 Read static CLI reference:

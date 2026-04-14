@@ -29,6 +29,7 @@ Fields:
 - `input`: capability-specific payload
 - `max_retries`: optional retry count on capability failure (default: `0`)
 - `metadata`: optional caller context
+- `workflow_id`: optional workflow linkage injected by the workflow layer when a task belongs to a workflow
 
 ### `TaskRecord`
 
@@ -43,6 +44,9 @@ Persisted task state:
 - `result`
 - `attempt` — number of execution attempts made (incremented per retry)
 - `max_retries` — retry budget copied from the submission
+- `workflow_id` — links a task back to its originating workflow when present
+- `archived_at` — archive marker used instead of hard delete
+- `audit_trail` — structured list of actor/action/status transitions
 - `created_at`
 - `updated_at`
 
@@ -52,6 +56,9 @@ State machine:
 
 ```text
 Pending -> Running -> Completed / Failed
+Pending -> Awaiting_Approval -> Approved -> Running
+Pending -> Policy_Denied
+Awaiting_Approval -> Cancelled
 ```
 
 ## Design Notes

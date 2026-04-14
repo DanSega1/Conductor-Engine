@@ -4,7 +4,7 @@ A living document tracking cross-phase invariants, confirmed architectural rules
 
 Update this document whenever a phase completes, a gap is closed, or a new invariant is established.
 
-Last reviewed: 2026-04-08 (Phase 3 in progress, post-Phase 2 checkup)
+Last reviewed: 2026-04-14 (Phase 3 complete)
 
 ---
 
@@ -46,57 +46,13 @@ These must hold at every phase. Breaking any of them is a regression, not a trad
 
 ## Known Gaps (open)
 
-These are real gaps in the current implementation. Each one has a resolution path listed under Phase 3 Remaining in `roadmap.md`.
+No Phase 3 integrity gaps are currently open in the core runtime.
 
-### G1 — `audit_trail` is never written
+The remaining constraints are explicit design boundaries, not accidental holes:
 
-**File:** `engine/supervisor/service.py`
-
-`TaskRecord.audit_trail` and `AuditEntry` are modelled correctly but the supervisor never appends entries during state transitions. The field is always `[]`.
-
-Every status transition in `run_task()` should append an `AuditEntry` (actor: `"supervisor"`, from/to status, timestamp). Retry attempts should produce entries too.
-
-**Resolution:** Part of the audit trail work; add `_append_audit()` helper in the supervisor before Phase 3 is marked complete.
-
-### G2 — Extended `TaskStatus` values are unreachable
-
-**File:** `engine/interfaces/task.py`
-
-`AWAITING_APPROVAL`, `APPROVED`, `POLICY_DENIED`, and `CANCELLED` are defined on `TaskStatus` but nothing in the runtime transitions to them. They are declared but orphaned.
-
-**Resolution:** The `PolicyEngine` interface (Phase 3 Remaining) will create the transition path for `POLICY_DENIED`. Approval flows create `AWAITING_APPROVAL` → `APPROVED`. Until those land, these states are forward-reserved only.
-
-### G3 — `workflow_id` is never set on `TaskRecord` during workflow execution
-
-**File:** `engine/workflow/orchestrator.py`, `engine/interfaces/task.py`
-
-`TaskSubmission` has no `workflow_id` field. When the orchestrator calls `supervisor.run_submission()` for a workflow step, the resulting `TaskRecord.workflow_id` is always `None`. You cannot query the store for "all tasks belonging to workflow X".
-
-**Resolution:** Add `workflow_id: str | None = None` to `TaskSubmission`. The orchestrator sets it when constructing submissions from `WorkerResponse`. The supervisor propagates it to the `TaskRecord`.
-
-### G4 — `supervisor.list_tasks()` ignores pagination
-
-**File:** `engine/supervisor/service.py`
-
-`TaskStore.list()` accepts `limit`, `offset`, and `status` parameters. `supervisor.list_tasks()` calls `store.list()` with no arguments — the new pagination capability is not exposed at the supervisor API.
-
-**Resolution:** Add `limit`, `offset`, `status` parameters to `list_tasks()` and pass them through.
-
-### G5 — `async_utils.run_coro` fails inside async contexts
-
-**File:** `engine/runtime/async_utils.py`
-
-`run_coro()` raises `RuntimeError` if called from a running event loop. This makes async memory providers unusable from within an async host. The current sync-only execution model hits this wall when any caller has an event loop active.
-
-**Resolution:** Phase 3 remaining item: replace `async_utils.py` with a proper async execution path design. Until then, `run_coro` is explicitly not safe in async hosts.
-
-### G6 — Retry attempts emit no per-attempt events
-
-**File:** `engine/supervisor/service.py`
-
-The retry loop runs silently. Only `task_started` and the final `task_completed` or `task_failed` events are emitted. Individual retry attempts are invisible to the event stream and the audit trail.
-
-**Resolution:** Emit a `task_retry` event (or add a `TASK_RETRY` event type) at the start of each retry attempt. Also append an `AuditEntry` per retry (depends on G1 being fixed).
+- **Timeouts are soft in the in-process runtime.** The supervisor can fail a task after a configured timeout, but it cannot forcibly terminate arbitrary in-flight work without moving capability execution into an isolated process.
+- **Parallelism is grouped, not DAG-based.** Adjacent steps that share `parallel_group` fan out concurrently, then synchronize before later steps. Full dependency graphs remain deferred.
+- **MCP transport is addon-owned.** Core provides an `MCPCapability` seam, but connection/session management lives in `conductor-mcp` rather than the base package.
 
 ---
 
@@ -107,6 +63,12 @@ The retry loop runs silently. Only `task_started` and the final `task_completed`
 | — | Store Protocol defined; MemoryTaskStore and LocalTaskStore implemented | Phase 1 |
 | — | Workflow contracts defined before orchestrator was built | Phase 2 Step 1 |
 | — | ValidatorInterface promoted to ABC (was duck-typed Protocol) | Phase 3 |
+| G1 | Supervisor writes `audit_trail` entries for transitions and retries | Phase 3 |
+| G2 | Extended `TaskStatus` values are reachable through policy and approval flows | Phase 3 |
+| G3 | Workflow submissions propagate `workflow_id` into stored task records | Phase 3 |
+| G4 | `supervisor.list_tasks()` exposes pagination and status filtering | Phase 3 |
+| G5 | `run_coro()` is safe inside active event loops without adding async public APIs | Phase 3 |
+| G6 | Retry attempts emit `TASK_RETRY` events and append audit entries | Phase 3 |
 
 ---
 
@@ -118,3 +80,6 @@ These decisions must not be quietly reversed by future changes.
 - **EventBus is fire-and-forget.** `emit()` must not block task execution. Slow or failing event emission must not propagate exceptions to the task lifecycle.
 - **Capabilities validate their own inputs.** `capability.validate_input()` is called before `capability.execute()`. Guardrails at the submission boundary are additive, not a replacement.
 - **Null objects over None checks.** `NullEventBus`, `PassthroughValidator` — new optional components introduce a null implementation rather than sprinkling `if x is not None` checks through the supervisor.
+- **Execution controls live outside task input.** Timeouts and rate limits are runtime-configured per capability, not part of `TaskSubmission`.
+- **Parallel workflow batches are explicit barriers.** `parallel_group` enables controlled fan-out without turning the Phase 2 workflow contract into a full DAG scheduler.
+- **Soft timeouts must stay honest.** The current runtime may mark a task failed after a timeout, but it must not pretend that arbitrary user code was forcibly terminated.
