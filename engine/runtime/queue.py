@@ -21,3 +21,6 @@ class InMemoryTaskQueue:
 
     def list(self) -> list[str]:
         return list(self._queue)
+
+    def health_check(self) -> list[str]:
+        return []
