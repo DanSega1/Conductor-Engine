@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from engine.interfaces.task import AuditEntry, TaskRecord, TaskStatus
+from engine.interfaces.task import AuditEntry, TaskRecord, TaskStatus, TaskSubmission
 from engine.runtime.store import MemoryTaskStore
 
 # ---------------------------------------------------------------------------
@@ -88,6 +88,16 @@ def test_audit_entry_approval_transition() -> None:
 def test_task_record_workflow_id_defaults_none() -> None:
     record = TaskRecord(name="t", capability="echo")
     assert record.workflow_id is None
+
+
+def test_task_submission_workflow_id_defaults_none() -> None:
+    submission = TaskSubmission(name="t", capability="echo")
+    assert submission.workflow_id is None
+
+
+def test_task_submission_workflow_id_can_be_set() -> None:
+    submission = TaskSubmission(name="t", capability="echo", workflow_id="wf-123")
+    assert submission.workflow_id == "wf-123"
 
 
 def test_task_record_workflow_id_can_be_set() -> None:

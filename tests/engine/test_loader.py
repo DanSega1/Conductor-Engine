@@ -30,3 +30,25 @@ def test_load_capabilities_from_file_rejects_bad_import_path(tmp_path: Path) -> 
 
     with pytest.raises(ValueError, match="Invalid import path"):
         load_capabilities_from_file(config_path, base_path=tmp_path)
+
+
+def test_load_capabilities_from_file_applies_execution_controls(tmp_path: Path) -> None:
+    config_path = tmp_path / "capabilities.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "include_builtins: true",
+                "execution_controls:",
+                "  http:",
+                "    timeout_seconds: 2.5",
+                "    min_interval_seconds: 0.1",
+                "capabilities: []",
+            ]
+        )
+    )
+
+    registry = load_capabilities_from_file(config_path, base_path=tmp_path)
+    controls = registry.execution_controls("http")
+
+    assert controls.timeout_seconds == 2.5
+    assert controls.min_interval_seconds == 0.1

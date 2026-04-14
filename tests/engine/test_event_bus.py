@@ -73,6 +73,11 @@ def test_event_type_values() -> None:
     assert EventType.TASK_STARTED == "task_started"
     assert EventType.TASK_COMPLETED == "task_completed"
     assert EventType.TASK_FAILED == "task_failed"
+    assert EventType.TASK_RETRY == "task_retry"
+    assert EventType.TASK_POLICY_DENIED == "task_policy_denied"
+    assert EventType.TASK_AWAITING_APPROVAL == "task_awaiting_approval"
+    assert EventType.TASK_APPROVED == "task_approved"
+    assert EventType.TASK_CANCELLED == "task_cancelled"
 
 
 # ---------------------------------------------------------------------------
@@ -167,10 +172,33 @@ class BombCapability:
         raise RuntimeError("bomb exploded")
 
 
+class FlakyCapability:
+    """Fails once, then succeeds, so retry bookkeeping can be asserted."""
+
+    descriptor = CapabilityDescriptor(
+        name="flaky",
+        description="fails once then succeeds",
+        risk_level=RiskLevel.LOW,
+    )
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def validate_input(self, raw: dict) -> dict:  # type: ignore[override]
+        return raw
+
+    def execute(self, payload: dict, context: CapabilityContext) -> CapabilityResult:  # type: ignore[override]
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("flaky failed once")
+        return CapabilityResult(output={"attempt": self.calls})
+
+
 def _make_supervisor(bus: EventBus | None = None) -> TaskSupervisor:
     registry = CapabilityRegistry()
     registry.register(EchoCapability())
     registry.register(BombCapability())
+    registry.register(FlakyCapability())
     store = MemoryTaskStore()
     return TaskSupervisor(registry=registry, store=store, event_bus=bus)
 
@@ -216,6 +244,50 @@ def test_supervisor_emits_started_and_failed_on_failure() -> None:
     assert EventType.TASK_STARTED in event_types
     assert EventType.TASK_FAILED in event_types
     assert EventType.TASK_COMPLETED not in event_types
+
+
+def test_supervisor_failed_event_reports_final_attempt_after_retries() -> None:
+    captured: list[TaskEvent] = []
+
+    class CapturingBus:
+        def emit(self, event: TaskEvent) -> None:
+            captured.append(event)
+
+    sv = _make_supervisor(bus=CapturingBus())
+    task = sv.run_submission(TaskSubmission(name="t", capability="bomb", input={}, max_retries=2))
+
+    assert task.status == TaskStatus.FAILED
+    assert task.attempt == 3
+    assert [event.event_type for event in captured] == [
+        EventType.TASK_STARTED,
+        EventType.TASK_RETRY,
+        EventType.TASK_RETRY,
+        EventType.TASK_FAILED,
+    ]
+    assert captured[-1].attempt == 3
+    assert captured[-1].error == "bomb exploded"
+
+
+def test_supervisor_completed_event_reports_attempt_after_retry_recovery() -> None:
+    captured: list[TaskEvent] = []
+
+    class CapturingBus:
+        def emit(self, event: TaskEvent) -> None:
+            captured.append(event)
+
+    sv = _make_supervisor(bus=CapturingBus())
+    task = sv.run_submission(TaskSubmission(name="t", capability="flaky", input={}, max_retries=2))
+
+    assert task.status == TaskStatus.COMPLETED
+    assert task.attempt == 2
+    assert task.result is not None
+    assert task.result.output == {"attempt": 2}
+    assert [event.event_type for event in captured] == [
+        EventType.TASK_STARTED,
+        EventType.TASK_RETRY,
+        EventType.TASK_COMPLETED,
+    ]
+    assert captured[-1].attempt == 2
 
 
 def test_supervisor_started_event_carries_task_id() -> None:
@@ -269,3 +341,31 @@ def test_supervisor_mock_bus_called_twice_on_success() -> None:
     sv = _make_supervisor(bus=mock_bus)
     sv.run_submission(TaskSubmission(name="t", capability="echo", input={"message": "hi"}))
     assert mock_bus.emit.call_count == 2
+
+
+def test_supervisor_retry_event_carries_error_context() -> None:
+    captured: list[TaskEvent] = []
+
+    class CapturingBus:
+        def emit(self, event: TaskEvent) -> None:
+            captured.append(event)
+
+    sv = _make_supervisor(bus=CapturingBus())
+    sv.run_submission(TaskSubmission(name="t", capability="flaky", input={}, max_retries=2))
+
+    retry_event = next(event for event in captured if event.event_type == EventType.TASK_RETRY)
+    assert retry_event.error == "flaky failed once"
+    assert retry_event.metadata["attempt"] == 2
+    assert retry_event.metadata["previous_attempt"] == 1
+
+
+def test_supervisor_swallows_event_bus_errors() -> None:
+    class RaisingBus:
+        def emit(self, event: TaskEvent) -> None:
+            raise RuntimeError("bus offline")
+
+    sv = _make_supervisor(bus=RaisingBus())
+
+    record = sv.run_submission(TaskSubmission(name="t", capability="echo", input={"message": "hi"}))
+
+    assert record.status == TaskStatus.COMPLETED
