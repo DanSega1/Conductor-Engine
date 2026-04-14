@@ -97,7 +97,7 @@ Stability, observability, and deployment-readiness.
 - PolicyEngine interface — authorize-before-execute hook in supervisor; null policy by default
 - Replace `async_utils.py` dead-end — async execution path needs a real design
 - `cond health` command — `health_check() -> list[str]` per component
-- `design-integrity.md` — living doc for cross-phase invariants
+- `design-integrity.md` — living doc for cross-phase invariants ✓ (2026-04-08)
 - `MCPCapability` — capability wrapping an MCP tool call
 - Pluggable task store backends (Postgres, SQLite, Redis)
 - Parallel step execution in the orchestrator (with failure isolation)
