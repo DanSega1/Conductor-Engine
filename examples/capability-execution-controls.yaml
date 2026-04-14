@@ -1,0 +1,19 @@
+# Demonstrates: top-level execution_controls for built-in capabilities.
+# Use with the CLI's global --config flag, for example:
+#   cond --config examples/capability-execution-controls.yaml run examples/echo.yaml
+#
+# timeout_seconds is the current Phase 3 soft timeout wrapper. It can mark a
+# task failed after the deadline, but arbitrary in-process work is not forcibly
+# terminated.
+include_builtins: true
+
+execution_controls:
+  echo:
+    timeout_seconds: 1.0
+  filesystem:
+    timeout_seconds: 2.0
+  http:
+    timeout_seconds: 5.0
+    min_interval_seconds: 0.25
+
+capabilities: []
