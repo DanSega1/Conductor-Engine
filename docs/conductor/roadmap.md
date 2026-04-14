@@ -256,6 +256,18 @@ Create a workflow that keeps generated content fresh without manual effort:
 
 ---
 
+  ### Isolated capability execution for hard timeouts and cancellation
+
+  Phase 3 added runtime-configured `execution_controls`, but `timeout_seconds` is intentionally a soft in-process wrapper. The supervisor can mark a task failed after the deadline, but it cannot forcibly terminate arbitrary user code or guarantee prompt cancellation while capabilities run in the same process.
+
+  Future work:
+  - Add an optional isolated capability executor boundary (subprocess first, stronger sandboxing later)
+  - Route hard timeout enforcement and stronger cancellation semantics through that isolated executor path, not the current thread-based wrapper
+  - Keep supervisor-owned state transitions, audit entries, and event emission authoritative even when an isolated executor is killed
+  - Preserve the current in-process executor as the minimal default for local built-ins and simple deployments
+
+  ---
+
 ### CLI docs sync rule
 
 When a stable CLI command, flag, or help surface changes, update all relevant docs in the same change:
