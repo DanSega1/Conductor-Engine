@@ -81,7 +81,7 @@ Accepts a workflow YAML (goal + step list). One `examples/` workflow chaining tw
 
 ---
 
-## Phase 3 — Production Hardening (in progress)
+## Phase 3 — Production Hardening (complete)
 
 Stability, observability, and deployment-readiness.
 
@@ -92,17 +92,15 @@ Stability, observability, and deployment-readiness.
 - `ValidatorInterface` → ABC (enforcement, not duck-typing)
 - `TaskStore.list()` pagination: `limit`, `offset`, `status` filter
 - **EventBus**: `TaskEvent`, `EventBus` Protocol, `NullEventBus` (default), `LoggingEventBus`; supervisor emits `task_started` / `task_completed` / `task_failed`
-
-### Remaining
 - PolicyEngine interface — authorize-before-execute hook in supervisor; null policy by default
-- Replace `async_utils.py` dead-end — async execution path needs a real design
+- Safe sync/async bridge in `async_utils.py` — async providers can execute inside active event loops without adding async public APIs yet
 - `cond health` command — `health_check() -> list[str]` per component
-- `design-integrity.md` — living doc for cross-phase invariants ✓ (2026-04-08)
-- `MCPCapability` — capability wrapping an MCP tool call
+- `design-integrity.md` — living doc for cross-phase invariants ✓ (updated 2026-04-14)
+- `MCPCapability` seam — capability wrapper for addon-provided MCP executors; concrete transport stays in `conductor-mcp`
 - Pluggable task store backends (Postgres, SQLite, Redis)
-- Parallel step execution in the orchestrator (with failure isolation)
-- Rate limiting and timeout controls per capability
-- Approval flows: steps that pause pending external confirmation
+- Parallel step execution in the orchestrator via adjacent `parallel_group` batches, with failure isolation at the batch boundary
+- Runtime-configured execution controls per capability: soft timeouts and min-interval rate limiting
+- Approval flows: tasks can pause in `AWAITING_APPROVAL`, resume via `APPROVED`, or terminate via `CANCELLED`
 
 ---
 

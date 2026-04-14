@@ -41,7 +41,7 @@ Default is `max_retries=0` — one attempt, no retries. Existing callers are una
 
 - Planning (Phase 2)
 - Multi-step workflows (Phase 2)
-- Policy engines (Phase 5)
-- Approval flows (Phase 5)
+- Policy engines (Phase 3)
+- Approval flows (Phase 3)
 - Distributed queues (Phase 7)
 - Iteration control and adaptive retry (Phase 5)
