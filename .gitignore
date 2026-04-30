@@ -90,3 +90,4 @@ examples/output/
 .copilot/
 .squad-workstream
 .DS_Store
+.sidecar/shells.json.lock
