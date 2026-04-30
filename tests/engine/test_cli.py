@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from cli.cond import main
 from engine.interfaces.task import AuditEntry, TaskRecord, TaskStatus
 from engine.runtime.store import LocalTaskStore
@@ -297,3 +299,74 @@ def test_help_unknown_topic_returns_error(capsys) -> None:
 
     assert exit_code == 2
     assert "Unknown help topic: not-a-topic" in captured.err
+
+
+# NOTE: requires McManus slice 2 implementation
+# ESCALATED must be added to STATUS_STYLES and STATUS_LABELS in cli/cond.py before
+# these tests can pass — otherwise _status_text raises KeyError for TaskStatus.ESCALATED.
+@pytest.mark.xfail(reason="requires McManus slice 2: ESCALATED in CLI STATUS_STYLES/LABELS", strict=False)
+def test_task_list_shows_escalated_tasks_not_silently_hidden(tmp_path: Path, capsys) -> None:
+    """ESCALATED tasks must appear in `cond task list` output with a distinct marker."""
+    store_file = tmp_path / "tasks.json"
+    _save_task(
+        store_file,
+        TaskRecord(
+            task_id="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            name="escalated-task",
+            capability="echo",
+            status=TaskStatus.ESCALATED,
+        ),
+    )
+    _save_task(
+        store_file,
+        TaskRecord(
+            task_id="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            name="completed-task",
+            capability="echo",
+            status=TaskStatus.COMPLETED,
+        ),
+    )
+
+    exit_code = main(["--store", str(store_file), "task", "list"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "escalated-task" in captured.out
+    assert "escalated" in captured.out
+
+
+# NOTE: requires McManus slice 2 implementation
+# Displaying ESCALATED tasks requires STATUS_STYLES/STATUS_LABELS entries.
+@pytest.mark.xfail(reason="requires McManus slice 2: ESCALATED in CLI STATUS_STYLES/LABELS", strict=False)
+def test_task_list_status_filter_escalated_returns_only_escalated(
+    tmp_path: Path, capsys
+) -> None:
+    """--status escalated must return only ESCALATED tasks and exclude all others."""
+    store_file = tmp_path / "tasks.json"
+    _save_task(
+        store_file,
+        TaskRecord(
+            task_id="cccccccc-cccc-cccc-cccc-cccccccccccc",
+            name="escalated-only",
+            capability="echo",
+            status=TaskStatus.ESCALATED,
+        ),
+    )
+    _save_task(
+        store_file,
+        TaskRecord(
+            task_id="dddddddd-dddd-dddd-dddd-dddddddddddd",
+            name="should-not-appear",
+            capability="echo",
+            status=TaskStatus.FAILED,
+        ),
+    )
+
+    exit_code = main(["--store", str(store_file), "task", "list", "--status", "escalated"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "escalated-only" in captured.out
+    assert "should-not-appear" not in captured.out

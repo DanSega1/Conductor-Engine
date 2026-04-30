@@ -555,3 +555,130 @@ def test_supervisor_default_retry_behavior_unchanged(tmp_path: Path) -> None:
     assert task.status == TaskStatus.COMPLETED
     assert capability.call_count == 3
     assert task.attempt == 3
+
+
+def test_escalated_task_audit_trail_contains_failure_recorded_entries(tmp_path: Path) -> None:
+    """ESCALATED task must carry failure_recorded audit entries with full FailureContext data."""
+    from engine.runtime.retry import DefaultRetryStrategy
+
+    class FailingCapability(Capability):
+        @property
+        def descriptor(self) -> CapabilityDescriptor:
+            return CapabilityDescriptor(
+                name="failing",
+                description="Always fails.",
+                risk_level=RiskLevel.LOW,
+            )
+
+        def execute(self, payload: dict, context) -> CapabilityResult:
+            raise ValueError("always fails")
+
+    registry = CapabilityRegistry()
+    registry.register(FailingCapability())
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+        retry_strategy=DefaultRetryStrategy(enable_escalation=True),
+    )
+
+    task = supervisor.run_submission(
+        TaskSubmission(name="Escalating task", capability="failing", max_retries=1)
+    )
+
+    assert task.status == TaskStatus.ESCALATED
+
+    failure_entries = [e for e in task.audit_trail if e.action == "failure_recorded"]
+    assert len(failure_entries) >= 1
+
+    first = failure_entries[0].metadata
+    assert first["task_id"] == task.task_id
+    assert first["capability"] == "failing"
+    assert first["error_type"] == "ValueError"
+    assert first["error_message"] == "always fails"
+    assert "attempt" in first
+    assert "max_retries" in first
+    assert "input_fingerprint" in first
+
+
+def test_escalated_task_result_error_is_populated(tmp_path: Path) -> None:
+    """ESCALATED task must have result.error set to the originating exception message."""
+    from engine.runtime.retry import DefaultRetryStrategy
+
+    class FailingCapability(Capability):
+        @property
+        def descriptor(self) -> CapabilityDescriptor:
+            return CapabilityDescriptor(
+                name="failing",
+                description="Always fails.",
+                risk_level=RiskLevel.LOW,
+            )
+
+        def execute(self, payload: dict, context) -> CapabilityResult:
+            raise RuntimeError("critical subsystem error")
+
+    registry = CapabilityRegistry()
+    registry.register(FailingCapability())
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+        retry_strategy=DefaultRetryStrategy(enable_escalation=True),
+    )
+
+    task = supervisor.run_submission(
+        TaskSubmission(name="Error propagation", capability="failing", max_retries=0)
+    )
+
+    assert task.status == TaskStatus.ESCALATED
+    assert task.result is not None
+    assert task.result.error is not None
+    assert "critical subsystem error" in task.result.error
+    assert task.result.success is False
+
+
+def test_run_task_on_escalated_task_returns_immediately_without_re_executing(
+    tmp_path: Path,
+) -> None:
+    """run_task on an already-ESCALATED task must return immediately; capability is not re-invoked."""
+    from engine.runtime.retry import DefaultRetryStrategy
+
+    class CountingFailCapability(Capability):
+        def __init__(self) -> None:
+            super().__init__()
+            self.call_count = 0
+
+        @property
+        def descriptor(self) -> CapabilityDescriptor:
+            return CapabilityDescriptor(
+                name="count_fail",
+                description="Counts calls and always fails.",
+                risk_level=RiskLevel.LOW,
+            )
+
+        def execute(self, payload: dict, context) -> CapabilityResult:
+            self.call_count += 1
+            raise ValueError("forced failure")
+
+    capability = CountingFailCapability()
+    registry = CapabilityRegistry()
+    registry.register(capability)
+    store = MemoryTaskStore()
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=store,
+        workdir=tmp_path,
+        retry_strategy=DefaultRetryStrategy(enable_escalation=True),
+    )
+
+    escalated = supervisor.run_submission(
+        TaskSubmission(name="Escalate first", capability="count_fail", max_retries=0)
+    )
+    assert escalated.status == TaskStatus.ESCALATED
+    calls_after_first_run = capability.call_count
+
+    # Calling run_task on an already-terminal ESCALATED task must be a no-op
+    returned = supervisor.run_task(escalated.task_id)
+
+    assert returned.status == TaskStatus.ESCALATED
+    assert capability.call_count == calls_after_first_run  # no additional execution

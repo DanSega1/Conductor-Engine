@@ -13,9 +13,9 @@ from typing import Any
 
 from engine.guardrails.validation import validate_task_submission
 from engine.interfaces.capability import CapabilityContext
-from engine.interfaces.escalation import EscalationPolicy
 from engine.interfaces.event import EventBus, EventType, TaskEvent
 from engine.interfaces.policy import PolicyContext, PolicyDecision, PolicyDecisionType, PolicyEngine
+from engine.interfaces.escalation import EscalationPolicy
 from engine.interfaces.retry import FailureContext, RetryStrategy
 from engine.interfaces.task import AuditEntry, TaskRecord, TaskResult, TaskStatus, TaskSubmission
 from engine.registry.capabilities import CapabilityRegistry
@@ -412,14 +412,17 @@ class TaskSupervisor:
                 )
                 self._save_task(task)
 
+                # Check if we should escalate via policy
+                should_escalate_via_policy = (
+                    self._escalation_policy is not None
+                    and self._escalation_policy.should_escalate(task, failure_history)
+                )
+
                 # Ask retry strategy for decision
                 decision = self._retry_strategy.decide(task, failure)
 
                 if not decision.should_retry:
-                    if decision.escalate or (
-                        self._escalation_policy
-                        and self._escalation_policy.should_escalate(task, failure_history)
-                    ):
+                    if decision.escalate or should_escalate_via_policy:
                         self._do_escalate(
                             task,
                             failure_history,

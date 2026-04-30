@@ -74,3 +74,14 @@
 - Added invariant #9 to `docs/conductor/design-integrity.md`: "ESCALATED is a terminal status — the supervisor must never transition an ESCALATED task back to RUNNING."
 - Added `### Done` and `### Planned` subsections under Phase 5 in `docs/conductor/roadmap.md` to document Slices 1 and 2 as completed.
 - Added 4 new tests for `escalation_threshold` (threshold met, not met, None behavior, disabled guard). Test count: 162 → 166.
+- Added `EscalationConfig` model to `engine/interfaces/retry.py` with `max_retries_before_escalate`, `escalation_reason`, and `escalation_metadata` fields.
+- Added `EscalationRecord` Pydantic model to `engine/interfaces/retry.py` to capture full escalation context including failure history and timestamps.
+- Added `EscalationPolicy` Protocol to `engine/interfaces/retry.py` with `should_escalate()` and `build_record()` methods — separate from `RetryStrategy` to allow independent composition.
+- Implemented `ThresholdEscalationPolicy` in `engine/runtime/retry.py` that escalates when failure count meets/exceeds configured threshold.
+- Updated `DefaultRetryStrategy` to accept optional `EscalationConfig` and honor `max_retries_before_escalate` when set; falls back to task's `max_retries` when not.
+- Wired `EscalationPolicy` into `TaskSupervisor.__init__()` as optional parameter (defaults to `None` for backward compatibility).
+- Modified supervisor's `run_task()` to track `failure_history` across retry loop and check both `RetryDecision.escalate` and `EscalationPolicy.should_escalate()`.
+- Escalation now builds proper `EscalationRecord` via policy and stores it in `TaskResult.output` when policy is present; falls back to basic metadata when policy is `None`.
+- `ESCALATED` status remains terminal (like `FAILED`) — supervisor never re-queues escalated tasks.
+- All 162 existing tests pass with no modifications required — escalation is opt-in and non-breaking.
+- Pattern: compose retry and escalation independently; retry strategy controls retry decisions, escalation policy controls escalation thresholds and record-building.
