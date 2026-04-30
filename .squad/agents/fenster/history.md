@@ -54,3 +54,21 @@
 - No new test failures or lint issues introduced; pre-existing CLI test failures are unrelated (package not installed in dev mode)
 - **Learning:** python-semantic-release v10 template context provides `owner`, `repo_name`, `version`, `changelog` (NOT `repo` as a combined string)
 - **Pattern:** For PSR release templates, always use `{{ owner }}/{{ repo_name }}` for GitHub URLs, never assume a combined `{{ repo }}` variable exists
+
+### 2026-05-01 — Phase 5 Slice 2: Escalation Paths Test Suite
+
+- Created `tests/engine/test_escalation.py` ahead of McManus's implementation (spec-first testing per squad workflow)
+- **Scope:** 20 tests covering `EscalationConfig`, `EscalationRecord`, `ThresholdEscalationPolicy`, and supervisor integration
+- Tests import from `engine.interfaces.escalation` and `engine.runtime.escalation` (contracts not yet implemented by McManus)
+- **Current status:** 19 tests fail with `ModuleNotFoundError`, 1 regression guard passes (task without policy → FAILED, not ESCALATED)
+- **Coverage areas:**
+  - `EscalationConfig` Pydantic model: construction, defaults, validation on missing required field
+  - `EscalationRecord` Pydantic model: construction, optional fields, full round-trip serialization (`.model_dump()` → reconstruct)
+  - `ThresholdEscalationPolicy.should_escalate`: below/at/above threshold logic
+  - `ThresholdEscalationPolicy.build_record`: history population, timestamps, config reason vs default reason
+  - Supervisor integration: task status → ESCALATED, `EscalationRecord` stored in `task.result.metadata`, audit trail contains "escalated" entry, `TASK_ESCALATED` event emitted exactly once
+  - Regression guard: task without `EscalationPolicy` still transitions to FAILED when retries exhausted
+  - Normal retry flow preserved: task below escalation threshold retries normally
+- **Test helper pattern:** Used existing supervisor test helper (MemoryTaskStore, CapturingEventBus, FailingCapability inline classes) from `test_supervisor.py`
+- **Pattern learned:** When writing tests for parallel implementation, one regression guard test validates that absence of new feature preserves old behavior — this test passes immediately and confirms non-interference
+- **Coordination:** Tests will be run together with McManus's implementation after both finish; failures expected until modules exist

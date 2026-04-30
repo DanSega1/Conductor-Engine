@@ -13,6 +13,7 @@ from typing import Any
 
 from engine.guardrails.validation import validate_task_submission
 from engine.interfaces.capability import CapabilityContext
+from engine.interfaces.escalation import EscalationPolicy
 from engine.interfaces.event import EventBus, EventType, TaskEvent
 from engine.interfaces.policy import PolicyContext, PolicyDecision, PolicyDecisionType, PolicyEngine
 from engine.interfaces.retry import FailureContext, RetryStrategy
@@ -70,6 +71,7 @@ class TaskSupervisor:
         event_bus: EventBus | None = None,
         policy_engine: PolicyEngine | None = None,
         retry_strategy: RetryStrategy | None = None,
+        escalation_policy: EscalationPolicy | None = None,
     ) -> None:
         self.registry = registry
         self.store = store
@@ -82,6 +84,7 @@ class TaskSupervisor:
         self._retry_strategy: RetryStrategy = (
             retry_strategy if retry_strategy is not None else DefaultRetryStrategy()
         )
+        self._escalation_policy: EscalationPolicy | None = escalation_policy
         self._execution_lock = threading.Lock()
         self._last_capability_start: dict[str, float] = {}
 
@@ -255,6 +258,44 @@ class TaskSupervisor:
 
         return task
 
+    def _do_escalate(
+        self,
+        task: TaskRecord,
+        failure_history: list[FailureContext],
+        started_at: datetime,
+        exc: BaseException,
+        *,
+        reason: str | None = None,
+    ) -> None:
+        escalated_at = _now()
+        escalation_record = (
+            self._escalation_policy.build_record(task, failure_history)
+            if self._escalation_policy is not None
+            else None
+        )
+        result_metadata: dict[str, Any] = {}
+        if escalation_record is not None:
+            result_metadata["escalation_record"] = escalation_record.model_dump()
+        elif reason is not None:
+            result_metadata["escalation_reason"] = reason
+        task.result = TaskResult(
+            success=False,
+            error=str(exc),
+            metadata=result_metadata,
+            started_at=started_at,
+            completed_at=escalated_at,
+        )
+        self._transition_status(
+            task,
+            to_status=TaskStatus.ESCALATED,
+            actor="supervisor",
+            action="escalated",
+            event_type=EventType.TASK_ESCALATED,
+            metadata={"attempt": task.attempt, "total_failures": len(failure_history)},
+            error=task.result.error,
+            timestamp=escalated_at,
+        )
+
     def get_task(self, task_id: str) -> TaskRecord:
         task = self.store.get(task_id)
         if task is None:
@@ -308,6 +349,7 @@ class TaskSupervisor:
         )
 
         last_exc: Exception | None = None
+        failure_history: list[FailureContext] = []
         while True:
             try:
                 payload = capability.validate_input(task.input)
@@ -358,6 +400,7 @@ class TaskSupervisor:
                     error_message=str(exc),
                     input_fingerprint=input_fingerprint,
                 )
+                failure_history.append(failure)
 
                 # Persist failure context in audit trail
                 failure_metadata = failure.model_dump()
@@ -373,32 +416,32 @@ class TaskSupervisor:
                 decision = self._retry_strategy.decide(task, failure)
 
                 if not decision.should_retry:
-                    if decision.escalate:
-                        # Escalate terminal state
-                        escalated_at = _now()
-                        task.result = TaskResult(
-                            success=False,
-                            error=str(exc),
-                            metadata={"escalation_reason": decision.reason or "Retry exhausted"},
-                            started_at=started_at,
-                            completed_at=escalated_at,
-                        )
-                        self._transition_status(
+                    if decision.escalate or (
+                        self._escalation_policy
+                        and self._escalation_policy.should_escalate(task, failure_history)
+                    ):
+                        self._do_escalate(
                             task,
-                            to_status=TaskStatus.ESCALATED,
-                            actor="supervisor",
-                            action="escalated",
-                            event_type=EventType.TASK_ESCALATED,
-                            metadata={"attempt": task.attempt, "reason": decision.reason},
-                            error=task.result.error,
-                            timestamp=escalated_at,
+                            failure_history,
+                            started_at,
+                            exc,
+                            reason=decision.reason if decision.escalate else None,
                         )
-                        last_exc = None  # Escalation is terminal but not failure
-                    # Otherwise fall through to FAILED
+                        last_exc = None
                     break
 
-                # Strategy says retry
+                # Would retry — increment attempt, then check escalation policy
                 task.attempt += 1
+                if decision.adjusted_input is not None:
+                    task.input = decision.adjusted_input
+
+                if self._escalation_policy and self._escalation_policy.should_escalate(
+                    task, failure_history
+                ):
+                    self._do_escalate(task, failure_history, started_at, exc)
+                    last_exc = None
+                    break
+
                 retry_metadata = {
                     "attempt": task.attempt,
                     "previous_attempt": task.attempt - 1,
@@ -407,7 +450,6 @@ class TaskSupervisor:
                     "retry_reason": decision.reason,
                 }
                 if decision.adjusted_input is not None:
-                    task.input = decision.adjusted_input
                     retry_metadata["input_adjusted"] = True
 
                 self._append_audit(
