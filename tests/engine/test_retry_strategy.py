@@ -1,6 +1,8 @@
 """Tests for behavioral retry strategy."""
 
 
+import pytest
+
 from engine.interfaces.retry import FailureContext, RetryDecision
 from engine.interfaces.task import TaskRecord
 from engine.runtime.retry import DefaultRetryStrategy
@@ -192,6 +194,126 @@ class TestDefaultRetryStrategy:
         decision = strategy.decide(task, failure)
 
         assert decision.delay_seconds is None
+
+    # NOTE: requires McManus slice 2 implementation
+    @pytest.mark.xfail(reason="requires McManus slice 2: escalation_threshold on DefaultRetryStrategy", strict=False)
+    def test_escalation_threshold_none_escalates_on_exhaustion(self):
+        """enable_escalation=True, threshold=None → escalate on any exhaustion."""
+        strategy = DefaultRetryStrategy(enable_escalation=True, escalation_threshold=None)
+        task = TaskRecord(name="test", capability="echo", attempt=4, max_retries=3)
+        failure = FailureContext(
+            task_id=task.task_id,
+            capability="echo",
+            attempt=4,
+            max_retries=3,
+            error_type="ValueError",
+            error_message="test error",
+        )
+
+        decision = strategy.decide(task, failure)
+
+        assert decision.should_retry is False
+        assert decision.escalate is True
+
+    # NOTE: requires McManus slice 2 implementation
+    @pytest.mark.xfail(reason="requires McManus slice 2: escalation_threshold on DefaultRetryStrategy", strict=False)
+    def test_escalation_threshold_set_escalates_at_or_above_threshold(self):
+        """enable_escalation=True, threshold=3 → escalate when attempt >= threshold on exhaustion."""
+        strategy = DefaultRetryStrategy(enable_escalation=True, escalation_threshold=3)
+        task = TaskRecord(name="test", capability="echo", attempt=4, max_retries=3)
+        failure = FailureContext(
+            task_id=task.task_id,
+            capability="echo",
+            attempt=4,
+            max_retries=3,
+            error_type="ValueError",
+            error_message="test error",
+        )
+
+        decision = strategy.decide(task, failure)
+
+        assert decision.should_retry is False
+        assert decision.escalate is True
+
+    # NOTE: requires McManus slice 2 implementation
+    @pytest.mark.xfail(reason="requires McManus slice 2: escalation_threshold on DefaultRetryStrategy", strict=False)
+    def test_escalation_threshold_set_no_escalation_below_threshold(self):
+        """enable_escalation=True, threshold=3 → FAILED (not escalate) when attempt < threshold."""
+        strategy = DefaultRetryStrategy(enable_escalation=True, escalation_threshold=3)
+        task = TaskRecord(name="test", capability="echo", attempt=2, max_retries=1)
+        failure = FailureContext(
+            task_id=task.task_id,
+            capability="echo",
+            attempt=2,
+            max_retries=1,
+            error_type="ValueError",
+            error_message="test error",
+        )
+
+        decision = strategy.decide(task, failure)
+
+        assert decision.should_retry is False
+        assert decision.escalate is False
+
+    # NOTE: requires McManus slice 2 implementation
+    @pytest.mark.xfail(reason="requires McManus slice 2: escalation_threshold on DefaultRetryStrategy", strict=False)
+    def test_escalation_disabled_with_threshold_never_escalates(self):
+        """enable_escalation=False, threshold=3 → never escalate regardless of attempt."""
+        strategy = DefaultRetryStrategy(enable_escalation=False, escalation_threshold=3)
+        task = TaskRecord(name="test", capability="echo", attempt=4, max_retries=3)
+        failure = FailureContext(
+            task_id=task.task_id,
+            capability="echo",
+            attempt=4,
+            max_retries=3,
+            error_type="ValueError",
+            error_message="test error",
+        )
+
+        decision = strategy.decide(task, failure)
+
+        assert decision.should_retry is False
+        assert decision.escalate is False
+
+    # NOTE: requires McManus slice 2 implementation
+    @pytest.mark.xfail(reason="requires McManus slice 2: escalation_threshold on DefaultRetryStrategy", strict=False)
+    def test_escalation_threshold_boundary_exactly_at_threshold(self):
+        """Attempt exactly at threshold → escalate (>= is inclusive)."""
+        strategy = DefaultRetryStrategy(enable_escalation=True, escalation_threshold=3)
+        task = TaskRecord(name="test", capability="echo", attempt=3, max_retries=2)
+        failure = FailureContext(
+            task_id=task.task_id,
+            capability="echo",
+            attempt=3,
+            max_retries=2,
+            error_type="ValueError",
+            error_message="test error",
+        )
+
+        decision = strategy.decide(task, failure)
+
+        assert decision.should_retry is False
+        assert decision.escalate is True
+
+    # NOTE: requires McManus slice 2 implementation
+    @pytest.mark.xfail(reason="requires McManus slice 2: escalation_threshold on DefaultRetryStrategy", strict=False)
+    def test_escalation_threshold_boundary_one_below_threshold(self):
+        """Attempt one below threshold → FAILED, not escalated."""
+        strategy = DefaultRetryStrategy(enable_escalation=True, escalation_threshold=3)
+        task = TaskRecord(name="test", capability="echo", attempt=2, max_retries=1)
+        failure = FailureContext(
+            task_id=task.task_id,
+            capability="echo",
+            attempt=2,
+            max_retries=1,
+            error_type="ValueError",
+            error_message="test error",
+        )
+
+        decision = strategy.decide(task, failure)
+
+        assert decision.should_retry is False
+        assert decision.escalate is False
 
 
 class TestFailureContext:

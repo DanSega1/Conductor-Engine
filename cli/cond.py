@@ -106,6 +106,7 @@ STATUS_STYLES: dict[TaskStatus, str] = {
     TaskStatus.APPROVED: "green",
     TaskStatus.POLICY_DENIED: "red",
     TaskStatus.CANCELLED: "red",
+    TaskStatus.ESCALATED: "magenta",
 }
 
 STATUS_LABELS: dict[TaskStatus, str] = {
@@ -117,6 +118,7 @@ STATUS_LABELS: dict[TaskStatus, str] = {
     TaskStatus.APPROVED: "approved",
     TaskStatus.POLICY_DENIED: "policy denied",
     TaskStatus.CANCELLED: "cancelled",
+    TaskStatus.ESCALATED: "escalated",
 }
 
 

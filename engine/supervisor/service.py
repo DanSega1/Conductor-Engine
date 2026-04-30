@@ -15,7 +15,7 @@ from engine.guardrails.validation import validate_task_submission
 from engine.interfaces.capability import CapabilityContext
 from engine.interfaces.event import EventBus, EventType, TaskEvent
 from engine.interfaces.policy import PolicyContext, PolicyDecision, PolicyDecisionType, PolicyEngine
-from engine.interfaces.retry import FailureContext, RetryStrategy
+from engine.interfaces.retry import EscalationPolicy, FailureContext, RetryStrategy
 from engine.interfaces.task import AuditEntry, TaskRecord, TaskResult, TaskStatus, TaskSubmission
 from engine.registry.capabilities import CapabilityRegistry
 from engine.runtime.bus import NullEventBus
@@ -70,6 +70,7 @@ class TaskSupervisor:
         event_bus: EventBus | None = None,
         policy_engine: PolicyEngine | None = None,
         retry_strategy: RetryStrategy | None = None,
+        escalation_policy: EscalationPolicy | None = None,
     ) -> None:
         self.registry = registry
         self.store = store
@@ -82,6 +83,7 @@ class TaskSupervisor:
         self._retry_strategy: RetryStrategy = (
             retry_strategy if retry_strategy is not None else DefaultRetryStrategy()
         )
+        self._escalation_policy: EscalationPolicy | None = escalation_policy
         self._execution_lock = threading.Lock()
         self._last_capability_start: dict[str, float] = {}
 
@@ -308,6 +310,7 @@ class TaskSupervisor:
         )
 
         last_exc: Exception | None = None
+        failure_history: list[FailureContext] = []
         while True:
             try:
                 payload = capability.validate_input(task.input)
@@ -358,6 +361,7 @@ class TaskSupervisor:
                     error_message=str(exc),
                     input_fingerprint=input_fingerprint,
                 )
+                failure_history.append(failure)
 
                 # Persist failure context in audit trail
                 failure_metadata = failure.model_dump()
@@ -369,20 +373,40 @@ class TaskSupervisor:
                 )
                 self._save_task(task)
 
+                # Check if we should escalate via policy
+                should_escalate_via_policy = (
+                    self._escalation_policy is not None
+                    and self._escalation_policy.should_escalate(task, failure_history)
+                )
+
                 # Ask retry strategy for decision
                 decision = self._retry_strategy.decide(task, failure)
 
                 if not decision.should_retry:
-                    if decision.escalate:
-                        # Escalate terminal state
+                    # Escalate if strategy says so OR policy says so
+                    if decision.escalate or should_escalate_via_policy:
                         escalated_at = _now()
-                        task.result = TaskResult(
-                            success=False,
-                            error=str(exc),
-                            metadata={"escalation_reason": decision.reason or "Retry exhausted"},
-                            started_at=started_at,
-                            completed_at=escalated_at,
-                        )
+
+                        # Build escalation record if policy exists, otherwise use basic metadata
+                        if self._escalation_policy is not None:
+                            escalation_record = self._escalation_policy.build_record(task, failure_history)
+                            task.result = TaskResult(
+                                success=False,
+                                error=str(exc),
+                                output=escalation_record.model_dump(),
+                                metadata={"escalated": True},
+                                started_at=started_at,
+                                completed_at=escalated_at,
+                            )
+                        else:
+                            task.result = TaskResult(
+                                success=False,
+                                error=str(exc),
+                                metadata={"escalation_reason": decision.reason or "Retry exhausted"},
+                                started_at=started_at,
+                                completed_at=escalated_at,
+                            )
+
                         self._transition_status(
                             task,
                             to_status=TaskStatus.ESCALATED,
