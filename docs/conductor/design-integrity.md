@@ -4,7 +4,7 @@ A living document tracking cross-phase invariants, confirmed architectural rules
 
 Update this document whenever a phase completes, a gap is closed, or a new invariant is established.
 
-Last reviewed: 2026-04-14 (Phase 3 complete)
+Last reviewed: 2026-05-01 (Phase 5 Slice 2 complete)
 
 ---
 
@@ -22,6 +22,7 @@ These must hold at every phase. Breaking any of them is a regression, not a trad
 | 6 | The EventBus is injected, never hardcoded | Supervisor accepts `event_bus: EventBus | None`; defaults to `NullEventBus` |
 | 7 | Store reads return deep copies | `MemoryTaskStore` uses `model_copy(deep=True)` — callers cannot mutate stored state by accident |
 | 8 | Failure context must be durable and observable | `FailureContext` persisted in `TaskRecord.audit_trail` before retry decisions (Phase 5) |
+| 9 | ESCALATED is a terminal status — the supervisor must never transition an ESCALATED task back to RUNNING | `engine/supervisor/service.py` — once `TaskStatus.ESCALATED` is written to the store, no subsequent state machine transition may overwrite it with RUNNING |
 
 ---
 

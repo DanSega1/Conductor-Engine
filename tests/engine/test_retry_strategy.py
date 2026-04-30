@@ -148,6 +148,98 @@ class TestDefaultRetryStrategy:
         assert decision.should_retry is True
         assert decision.escalate is False
 
+    def test_escalation_threshold_met(self):
+        """Should escalate when enabled and attempt meets the threshold."""
+        strategy = DefaultRetryStrategy(enable_escalation=True, escalation_threshold=5)
+        task = TaskRecord(
+            name="test",
+            capability="echo",
+            attempt=5,
+            max_retries=4,
+        )
+        failure = FailureContext(
+            task_id=task.task_id,
+            capability="echo",
+            attempt=5,
+            max_retries=4,
+            error_type="ValueError",
+            error_message="test error",
+        )
+
+        decision = strategy.decide(task, failure)
+
+        assert decision.should_retry is False
+        assert decision.escalate is True
+
+    def test_escalation_threshold_not_met(self):
+        """Should NOT escalate when retries exhausted but attempt is below threshold."""
+        strategy = DefaultRetryStrategy(enable_escalation=True, escalation_threshold=10)
+        task = TaskRecord(
+            name="test",
+            capability="echo",
+            attempt=4,
+            max_retries=3,
+        )
+        failure = FailureContext(
+            task_id=task.task_id,
+            capability="echo",
+            attempt=4,
+            max_retries=3,
+            error_type="ValueError",
+            error_message="test error",
+        )
+
+        decision = strategy.decide(task, failure)
+
+        assert decision.should_retry is False
+        assert decision.escalate is False
+
+    def test_escalation_threshold_none_escalates_on_any_exhaustion(self):
+        """With threshold=None, any exhaustion triggers escalation when enabled."""
+        strategy = DefaultRetryStrategy(enable_escalation=True, escalation_threshold=None)
+        task = TaskRecord(
+            name="test",
+            capability="echo",
+            attempt=1,
+            max_retries=0,
+        )
+        failure = FailureContext(
+            task_id=task.task_id,
+            capability="echo",
+            attempt=1,
+            max_retries=0,
+            error_type="ValueError",
+            error_message="test error",
+        )
+
+        decision = strategy.decide(task, failure)
+
+        assert decision.should_retry is False
+        assert decision.escalate is True
+
+    def test_escalation_threshold_ignored_when_escalation_disabled(self):
+        """escalation_threshold has no effect when enable_escalation=False."""
+        strategy = DefaultRetryStrategy(enable_escalation=False, escalation_threshold=1)
+        task = TaskRecord(
+            name="test",
+            capability="echo",
+            attempt=5,
+            max_retries=3,
+        )
+        failure = FailureContext(
+            task_id=task.task_id,
+            capability="echo",
+            attempt=5,
+            max_retries=3,
+            error_type="ValueError",
+            error_message="test error",
+        )
+
+        decision = strategy.decide(task, failure)
+
+        assert decision.should_retry is False
+        assert decision.escalate is False
+
     def test_no_input_adjustment(self):
         """Default strategy should not adjust inputs."""
         strategy = DefaultRetryStrategy()

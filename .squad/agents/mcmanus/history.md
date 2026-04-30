@@ -66,3 +66,11 @@
 - Changed `ValidatorInterface` from `@runtime_checkable Protocol` to `ABC` with `@abstractmethod`; enforces the two-argument signature at class definition time. `PlannerInterface` and `WorkerInterface` remain as Protocols.
 - `PassthroughValidator` now explicitly inherits `ValidatorInterface(ABC)` — required once the duck-typed Protocol was removed.
 - Paginated `TaskStore.list()` across Protocol, `MemoryTaskStore`, and `LocalTaskStore`; keyword-only args (`limit`, `offset`, `status`) prevent positional misuse and keep filter/slice logic consistent between backends.
+
+### 2026-05-01 — Phase 5 Slice 2: Escalation Paths
+
+- Added `escalation_threshold: int | None = None` to `DefaultRetryStrategy`. Logic: escalate when `enable_escalation=True` AND (`threshold is None` OR `attempt >= threshold`). Backward compat preserved — `DefaultRetryStrategy()` with no args is unchanged.
+- Added `TaskStatus.ESCALATED` to `STATUS_STYLES` (`"bold yellow"`) and `STATUS_LABELS` (`"⚠ escalated"`) in `cli/cond.py`. The `--status` filter already works via `_status_choices()` which dynamically iterates `TaskStatus`; no parser change needed.
+- Added invariant #9 to `docs/conductor/design-integrity.md`: "ESCALATED is a terminal status — the supervisor must never transition an ESCALATED task back to RUNNING."
+- Added `### Done` and `### Planned` subsections under Phase 5 in `docs/conductor/roadmap.md` to document Slices 1 and 2 as completed.
+- Added 4 new tests for `escalation_threshold` (threshold met, not met, None behavior, disabled guard). Test count: 162 → 166.

@@ -72,3 +72,19 @@
 - **Test helper pattern:** Used existing supervisor test helper (MemoryTaskStore, CapturingEventBus, FailingCapability inline classes) from `test_supervisor.py`
 - **Pattern learned:** When writing tests for parallel implementation, one regression guard test validates that absence of new feature preserves old behavior — this test passes immediately and confirms non-interference
 - **Coordination:** Tests will be run together with McManus's implementation after both finish; failures expected until modules exist
+### 2026-05-xx — Phase 5 Slice 2 Escalation QA
+
+- Phase 5 escalation supervisor behaviour is already fully implemented: `TaskStatus.ESCALATED`, `EventType.TASK_ESCALATED`, supervisor `ESCALATED` terminal-state path, and two existing supervisor tests covering it.
+- Added 3 supervisor tests that pass immediately (no McManus dependency):
+  - `test_escalated_task_audit_trail_contains_failure_recorded_entries` — asserts `failure_recorded` audit entries with full `FailureContext` fields are present on ESCALATED tasks
+  - `test_escalated_task_result_error_is_populated` — asserts `result.error` carries the originating exception message
+  - `test_run_task_on_escalated_task_returns_immediately_without_re_executing` — asserts `run_task` on a terminal ESCALATED task is a no-op (no capability re-invocation)
+- Added 6 retry-strategy tests + 2 CLI tests marked `@pytest.mark.xfail(strict=False)` pending McManus slice 2:
+  - `DefaultRetryStrategy(enable_escalation=True, escalation_threshold=None)` — escalate on any exhaustion
+  - `DefaultRetryStrategy(enable_escalation=True, escalation_threshold=3)` — escalate only when `attempt >= 3`; FAILED when below threshold
+  - `DefaultRetryStrategy(enable_escalation=False, escalation_threshold=3)` — never escalate
+  - boundary: exactly at threshold (should escalate) vs one below threshold (should FAILED)
+  - CLI: `task list` must not crash on ESCALATED tasks; `--status escalated` filter must return only ESCALATED records
+- **Edge case found:** `STATUS_STYLES` and `STATUS_LABELS` in `cli/cond.py` are missing `TaskStatus.ESCALATED`. `_status_text(TaskStatus.ESCALATED)` raises `KeyError`. McManus must add the entry; filed in decisions inbox.
+- **Pattern:** When a new `TaskStatus` variant is added, always audit `STATUS_STYLES`, `STATUS_LABELS`, and any dict-keyed lookups in `cli/cond.py`.
+- Baseline was 162 passing. After Fenster's additions: 165 passing + 8 xfailed. Suite is green.
