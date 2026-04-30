@@ -48,9 +48,14 @@ commit_message = "chore(release): {version} [skip ci]"
 commit_parser = "conventional"
 tag_format = "v{version}"
 version_toml = ["pyproject.toml:project.version"]
+upload_to_release = true
 
 [tool.semantic_release.remote.token]
 env = "GITHUB_TOKEN"
 
+[tool.semantic_release.changelog]
+template_dir = ".semantic_release_templates"
+
 [tool.semantic_release.changelog.default_templates]
 changelog_file = "CHANGELOG.md"
+release_body = "release.md.j2"

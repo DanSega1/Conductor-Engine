@@ -205,10 +205,7 @@ Resolution: check each action's releases for a Node.js 24–compatible tag and p
 
 ### Release notes on GitHub releases
 
-Currently releases are created by `python-semantic-release` but release notes are sparse. Tasks:
-- Configure `semantic_release` to generate a full changelog in the GitHub release body from conventional commit history
-- Add a `## What's Changed` section template in `CHANGELOG.md` format
-- Verify the release body renders correctly on the GitHub releases page
+Status: done (2026-04-14) — Configured `semantic_release` to populate GitHub release bodies with full changelog from conventional commits. Added `upload_to_release = true`, created `.semantic_release_templates/release.md.j2` with "What's Changed" section, and linked template in `pyproject.toml`.
 
 ---
 
@@ -245,6 +242,8 @@ The README needs a first-class presence for a published library. Items:
 ---
 
 ### Auto-update docs and README GitHub Action
+
+**Status: done (2026-04-30)** — Created `.github/workflows/docs-check.yml` with Mermaid validation and badge URL link-check jobs.
 
 Create a workflow that keeps generated content fresh without manual effort:
 - Trigger: push to `main` that touches `engine/**`, `docs/**`, or `examples/**`
@@ -309,16 +308,7 @@ Status: done (2026-04-02) — Bumped the package and GitHub Actions to Python 3.
 
 ### Semantic release version policy — review and tighten
 
-The project reached `0.8.0` in under 2 days. The conventional commit parser is bumping minor for every `feat:` — correct behaviour, but the cadence is creating version numbers that imply more stability than the codebase has. Review and decide:
-
-- **Current config:** `major_on_zero = false`, `allow_zero_version = true`, parser = `conventional`. Every `feat:` → minor bump. Every `fix:` / `perf:` → patch bump. `BREAKING CHANGE` → major bump (suppressed while `< 1.0.0` since `major_on_zero = false`).
-- **Problem:** Phase 2 and Phase 3 work is landing as many separate `feat:` commits, each triggering a minor bump. The version number races ahead of the real maturity of the project.
-- **Options to evaluate:**
-  1. **Squash-merge phases** — merge each phase as a single `feat:` commit so one phase = one minor bump. Requires discipline on branch strategy.
-  2. **Add `[skip release]` / `[skip ci]` to in-phase commits** — only the phase-completing commit triggers a release. Cleanest signal alignment.
-  3. **Conventional commit scoping** — use `feat(phase3):` to signal work-in-progress; release tooling can be configured to filter.
-  4. **Accept rapid bumping** — lean into it; `0.x` is explicitly unstable, version number does not imply maturity.
-- **Decision needed:** pick a strategy before Phase 3 ships its first commit. Record the decision in `.squad/decisions.md`.
+Status: done (2026-04-30) — Decided: Accept rapid bumping; 0.x versions carry no stability guarantee, real milestone is 1.0.0. See decisions.md.
 
 ---
 

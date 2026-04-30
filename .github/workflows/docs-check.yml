@@ -1,0 +1,127 @@
+name: Docs Check
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "engine/**"
+      - "docs/**"
+      - "examples/**"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  validate-mermaid:
+    name: Validate Mermaid Diagrams
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4.0.2
+        with:
+          node-version: "18"
+
+      - name: Find Mermaid diagrams
+        id: find-diagrams
+        run: |
+          diagrams=$(find docs -name "*.md" -exec grep -l '```mermaid' {} \;)
+          echo "Found Mermaid diagrams in:"
+          echo "$diagrams"
+          if [ -z "$diagrams" ]; then
+            echo "No Mermaid diagrams found"
+            exit 0
+          fi
+          echo "diagrams<<EOF" >> $GITHUB_OUTPUT
+          echo "$diagrams" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Validate Mermaid diagrams
+        if: steps.find-diagrams.outputs.diagrams != ''
+        run: |
+          npm install -g @mermaid-js/mermaid-cli
+          diagrams="${{ steps.find-diagrams.outputs.diagrams }}"
+          failed=0
+          
+          echo "$diagrams" | while read -r file; do
+            echo "Validating $file..."
+            # Extract mermaid blocks and validate them
+            grep -o '```mermaid.*```' "$file" | sed 's/```mermaid//' | sed 's/```$//' | while read -r block; do
+              if [ -n "$block" ]; then
+                # Use mmdc to validate syntax (dry-run mode)
+                if ! mmdc -i /dev/stdin -o /dev/null 2>/dev/null <<< "$block"; then
+                  echo "Invalid Mermaid in $file"
+                  failed=1
+                fi
+              fi
+            done
+          done
+          
+          if [ $failed -eq 1 ]; then
+            exit 1
+          fi
+
+  check-readme-badges:
+    name: Check README Badge URLs
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.1
+
+      - name: Check badge URLs
+        run: |
+          # Extract URLs from README badges
+          urls=$(grep -oP 'https://[^\s"]+' README.md | sort -u)
+          failed=0
+          
+          echo "Checking badge URLs..."
+          echo "$urls" | while read -r url; do
+            if [ -n "$url" ]; then
+              status=$(curl -s -o /dev/null -w "%{http_code}" -m 5 "$url" 2>/dev/null || echo "000")
+              if [ "$status" != "200" ] && [ "$status" != "302" ]; then
+                echo "❌ $url (HTTP $status)"
+                failed=1
+              else
+                echo "✓ $url"
+              fi
+            fi
+          done
+          
+          if [ $failed -eq 1 ]; then
+            exit 1
+          fi
+
+  create-issue-on-failure:
+    name: Create Issue on Failure
+    runs-on: ubuntu-latest
+    needs: [validate-mermaid, check-readme-badges]
+    if: failure()
+    permissions:
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.1
+
+      - name: Create issue for docs check failures
+        run: |
+          gh issue create \
+            --title "🔧 Docs Check Failed" \
+            --body "The docs-check workflow encountered failures on this push:
+          
+          - **Mermaid validation**: Check if any Mermaid diagrams in \`docs/\` have syntax errors
+          - **Badge URL check**: Verify that badge URLs in \`README.md\` are accessible
+          
+          See the workflow run for details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --label "docs" \
+            --label "automation"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

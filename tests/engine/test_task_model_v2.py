@@ -20,7 +20,7 @@ def test_task_status_has_approval_states() -> None:
     assert TaskStatus.CANCELLED == "cancelled"
 
 
-def test_task_status_all_eight_values() -> None:
+def test_task_status_values() -> None:
     values = {s.value for s in TaskStatus}
     assert values == {
         "pending",
@@ -31,6 +31,7 @@ def test_task_status_all_eight_values() -> None:
         "approved",
         "policy_denied",
         "cancelled",
+        "escalated",
     }
 
 

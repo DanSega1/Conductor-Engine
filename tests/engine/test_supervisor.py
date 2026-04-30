@@ -315,3 +315,243 @@ def test_supervisor_enforces_per_capability_min_interval(tmp_path: Path) -> None
 
     assert len(capability.calls) == 2
     assert capability.calls[1] - capability.calls[0] >= 0.045
+
+
+def test_supervisor_records_failure_context_in_audit_trail(tmp_path: Path) -> None:
+    """Failure context should be persisted in audit trail before retry decision."""
+
+    class FailingCapability(Capability):
+        def __init__(self) -> None:
+            super().__init__()
+            self.call_count = 0
+
+        @property
+        def descriptor(self) -> CapabilityDescriptor:
+            return CapabilityDescriptor(
+                name="failing",
+                description="Always fails.",
+                risk_level=RiskLevel.LOW,
+            )
+
+        def execute(self, payload: dict, context) -> CapabilityResult:
+            self.call_count += 1
+            raise ValueError("Intentional failure")
+
+    registry = CapabilityRegistry()
+    registry.register(FailingCapability())
+    store = MemoryTaskStore()
+    supervisor = TaskSupervisor(registry=registry, store=store, workdir=tmp_path)
+
+    task = supervisor.run_submission(
+        TaskSubmission(
+            name="Will fail",
+            capability="failing",
+            input={"test": "data"},
+            max_retries=2,
+        )
+    )
+
+    assert task.status == TaskStatus.FAILED
+
+    # Find failure_recorded audit entries
+    failure_entries = [e for e in task.audit_trail if e.action == "failure_recorded"]
+    assert len(failure_entries) == 3  # 3 attempts = 3 failures
+
+    # Check first failure context
+    first_failure = failure_entries[0].metadata
+    assert first_failure["task_id"] == task.task_id
+    assert first_failure["capability"] == "failing"
+    assert first_failure["attempt"] == 1
+    assert first_failure["max_retries"] == 2
+    assert first_failure["error_type"] == "ValueError"
+    assert first_failure["error_message"] == "Intentional failure"
+    assert "input_fingerprint" in first_failure
+
+
+def test_supervisor_uses_custom_retry_strategy(tmp_path: Path) -> None:
+    """Custom retry strategy should be invoked for failure decisions."""
+    from engine.interfaces.retry import FailureContext, RetryDecision
+
+    class NoRetryStrategy:
+        """Strategy that prevents all retries."""
+
+        def decide(self, task, failure: FailureContext) -> RetryDecision:
+            return RetryDecision(
+                should_retry=False,
+                reason="Custom policy: no retries allowed",
+            )
+
+    class FailingCapability(Capability):
+        def __init__(self) -> None:
+            super().__init__()
+            self.call_count = 0
+
+        @property
+        def descriptor(self) -> CapabilityDescriptor:
+            return CapabilityDescriptor(
+                name="failing",
+                description="Always fails.",
+                risk_level=RiskLevel.LOW,
+            )
+
+        def execute(self, payload: dict, context) -> CapabilityResult:
+            self.call_count += 1
+            raise ValueError("Intentional failure")
+
+    capability = FailingCapability()
+    registry = CapabilityRegistry()
+    registry.register(capability)
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+        retry_strategy=NoRetryStrategy(),
+    )
+
+    task = supervisor.run_submission(
+        TaskSubmission(
+            name="Will fail once",
+            capability="failing",
+            max_retries=5,  # Should be ignored by custom strategy
+        )
+    )
+
+    assert task.status == TaskStatus.FAILED
+    assert capability.call_count == 1  # Only one attempt despite max_retries=5
+
+
+def test_supervisor_escalates_when_retry_strategy_requests_it(tmp_path: Path) -> None:
+    """Task should transition to ESCALATED when retry strategy sets escalate=True."""
+    from engine.runtime.retry import DefaultRetryStrategy
+
+    class FailingCapability(Capability):
+        @property
+        def descriptor(self) -> CapabilityDescriptor:
+            return CapabilityDescriptor(
+                name="failing",
+                description="Always fails.",
+                risk_level=RiskLevel.LOW,
+            )
+
+        def execute(self, payload: dict, context) -> CapabilityResult:
+            raise ValueError("Intentional failure")
+
+    registry = CapabilityRegistry()
+    registry.register(FailingCapability())
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+        retry_strategy=DefaultRetryStrategy(enable_escalation=True),
+    )
+
+    task = supervisor.run_submission(
+        TaskSubmission(
+            name="Will escalate",
+            capability="failing",
+            max_retries=2,
+        )
+    )
+
+    assert task.status == TaskStatus.ESCALATED
+    assert task.result is not None
+    assert task.result.success is False
+    assert "escalation_reason" in task.result.metadata
+
+    # Check escalation event was emitted via audit trail
+    escalation_entry = [e for e in task.audit_trail if e.action == "escalated"]
+    assert len(escalation_entry) == 1
+    assert escalation_entry[0].to_status == TaskStatus.ESCALATED
+
+
+def test_supervisor_emits_escalated_event(tmp_path: Path) -> None:
+    """TASK_ESCALATED event should be emitted on escalation."""
+    from engine.runtime.retry import DefaultRetryStrategy
+
+    class FailingCapability(Capability):
+        @property
+        def descriptor(self) -> CapabilityDescriptor:
+            return CapabilityDescriptor(
+                name="failing",
+                description="Always fails.",
+                risk_level=RiskLevel.LOW,
+            )
+
+        def execute(self, payload: dict, context) -> CapabilityResult:
+            raise ValueError("Intentional failure")
+
+    class CapturingEventBus:
+        def __init__(self) -> None:
+            self.events: list[TaskEvent] = []
+
+        def emit(self, event: TaskEvent) -> None:
+            self.events.append(event)
+
+    registry = CapabilityRegistry()
+    registry.register(FailingCapability())
+    event_bus = CapturingEventBus()
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+        event_bus=event_bus,
+        retry_strategy=DefaultRetryStrategy(enable_escalation=True),
+    )
+
+    task = supervisor.run_submission(
+        TaskSubmission(
+            name="Will escalate",
+            capability="failing",
+            max_retries=1,
+        )
+    )
+
+    assert task.status == TaskStatus.ESCALATED
+
+    escalated_events = [e for e in event_bus.events if e.event_type == EventType.TASK_ESCALATED]
+    assert len(escalated_events) == 1
+    assert escalated_events[0].task_id == task.task_id
+    assert escalated_events[0].status == TaskStatus.ESCALATED
+
+
+def test_supervisor_default_retry_behavior_unchanged(tmp_path: Path) -> None:
+    """Default retry behavior should match pre-Phase-5 supervisor."""
+    class FailingTwiceCapability(Capability):
+        def __init__(self) -> None:
+            super().__init__()
+            self.call_count = 0
+
+        @property
+        def descriptor(self) -> CapabilityDescriptor:
+            return CapabilityDescriptor(
+                name="failing_twice",
+                description="Fails twice, succeeds third time.",
+                risk_level=RiskLevel.LOW,
+            )
+
+        def execute(self, payload: dict, context) -> CapabilityResult:
+            self.call_count += 1
+            if self.call_count < 3:
+                raise ValueError(f"Failure {self.call_count}")
+            return CapabilityResult(output={"success": True})
+
+    capability = FailingTwiceCapability()
+    registry = CapabilityRegistry()
+    registry.register(capability)
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+    )
+
+    task = supervisor.run_submission(
+        TaskSubmission(
+            name="Will succeed on retry",
+            capability="failing_twice",
+            max_retries=2,
+        )
+    )
+
+    assert task.status == TaskStatus.COMPLETED
+    assert capability.call_count == 3
+    assert task.attempt == 3

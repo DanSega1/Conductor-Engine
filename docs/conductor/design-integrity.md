@@ -21,6 +21,7 @@ These must hold at every phase. Breaking any of them is a regression, not a trad
 | 5 | Path traversal is rejected at the filesystem boundary | `ensure_local_path()` in `guardrails/validation.py` rejects paths escaping `workdir` |
 | 6 | The EventBus is injected, never hardcoded | Supervisor accepts `event_bus: EventBus | None`; defaults to `NullEventBus` |
 | 7 | Store reads return deep copies | `MemoryTaskStore` uses `model_copy(deep=True)` — callers cannot mutate stored state by accident |
+| 8 | Failure context must be durable and observable | `FailureContext` persisted in `TaskRecord.audit_trail` before retry decisions (Phase 5) |
 
 ---
 
