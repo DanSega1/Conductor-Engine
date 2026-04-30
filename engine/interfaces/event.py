@@ -24,6 +24,7 @@ class EventType(StrEnum):
     TASK_AWAITING_APPROVAL = "task_awaiting_approval"
     TASK_APPROVED = "task_approved"
     TASK_CANCELLED = "task_cancelled"
+    TASK_ESCALATED = "task_escalated"
 
 
 class TaskEvent(BaseModel):

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import hashlib
+import json
 from pathlib import Path
 from queue import Queue
 import threading
@@ -13,11 +15,13 @@ from engine.guardrails.validation import validate_task_submission
 from engine.interfaces.capability import CapabilityContext
 from engine.interfaces.event import EventBus, EventType, TaskEvent
 from engine.interfaces.policy import PolicyContext, PolicyDecision, PolicyDecisionType, PolicyEngine
+from engine.interfaces.retry import FailureContext, RetryStrategy
 from engine.interfaces.task import AuditEntry, TaskRecord, TaskResult, TaskStatus, TaskSubmission
 from engine.registry.capabilities import CapabilityRegistry
 from engine.runtime.bus import NullEventBus
 from engine.runtime.policy import NullPolicyEngine
 from engine.runtime.queue import InMemoryTaskQueue
+from engine.runtime.retry import DefaultRetryStrategy
 from engine.runtime.store import TaskStore
 
 
@@ -65,6 +69,7 @@ class TaskSupervisor:
         workdir: str | Path | None = None,
         event_bus: EventBus | None = None,
         policy_engine: PolicyEngine | None = None,
+        retry_strategy: RetryStrategy | None = None,
     ) -> None:
         self.registry = registry
         self.store = store
@@ -73,6 +78,9 @@ class TaskSupervisor:
         self._bus: EventBus = event_bus if event_bus is not None else NullEventBus()
         self._policy: PolicyEngine = (
             policy_engine if policy_engine is not None else NullPolicyEngine()
+        )
+        self._retry_strategy: RetryStrategy = (
+            retry_strategy if retry_strategy is not None else DefaultRetryStrategy()
         )
         self._execution_lock = threading.Lock()
         self._last_capability_start: dict[str, float] = {}
@@ -335,15 +343,73 @@ class TaskSupervisor:
                 break
             except Exception as exc:
                 last_exc = exc
-                if task.attempt > task.max_retries:
+
+                # Build failure context
+                input_fingerprint = hashlib.sha256(
+                    json.dumps(task.input, sort_keys=True).encode()
+                ).hexdigest()[:16]
+
+                failure = FailureContext(
+                    task_id=task.task_id,
+                    capability=task.capability,
+                    attempt=task.attempt,
+                    max_retries=task.max_retries,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                    input_fingerprint=input_fingerprint,
+                )
+
+                # Persist failure context in audit trail
+                failure_metadata = failure.model_dump()
+                self._append_audit(
+                    task,
+                    actor="supervisor",
+                    action="failure_recorded",
+                    metadata=failure_metadata,
+                )
+                self._save_task(task)
+
+                # Ask retry strategy for decision
+                decision = self._retry_strategy.decide(task, failure)
+
+                if not decision.should_retry:
+                    if decision.escalate:
+                        # Escalate terminal state
+                        escalated_at = _now()
+                        task.result = TaskResult(
+                            success=False,
+                            error=str(exc),
+                            metadata={"escalation_reason": decision.reason or "Retry exhausted"},
+                            started_at=started_at,
+                            completed_at=escalated_at,
+                        )
+                        self._transition_status(
+                            task,
+                            to_status=TaskStatus.ESCALATED,
+                            actor="supervisor",
+                            action="escalated",
+                            event_type=EventType.TASK_ESCALATED,
+                            metadata={"attempt": task.attempt, "reason": decision.reason},
+                            error=task.result.error,
+                            timestamp=escalated_at,
+                        )
+                        last_exc = None  # Escalation is terminal but not failure
+                    # Otherwise fall through to FAILED
                     break
+
+                # Strategy says retry
                 task.attempt += 1
                 retry_metadata = {
                     "attempt": task.attempt,
                     "previous_attempt": task.attempt - 1,
                     "max_retries": task.max_retries,
                     "error": str(exc),
+                    "retry_reason": decision.reason,
                 }
+                if decision.adjusted_input is not None:
+                    task.input = decision.adjusted_input
+                    retry_metadata["input_adjusted"] = True
+
                 self._append_audit(
                     task,
                     actor="supervisor",
@@ -359,6 +425,9 @@ class TaskSupervisor:
                     error=str(exc),
                     metadata=retry_metadata,
                 )
+
+                if decision.delay_seconds is not None and decision.delay_seconds > 0:
+                    time.sleep(decision.delay_seconds)
 
         if last_exc is not None:
             failed_at = _now()

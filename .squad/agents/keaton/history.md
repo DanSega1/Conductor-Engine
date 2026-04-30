@@ -50,6 +50,35 @@ Wrote two decision records to `.squad/decisions/inbox/` based on a research brie
 
 ---
 
+### 2026-04-30 — Phase 5 kickoff decision
+
+**Requested by:** Dan
+
+Phase 4 (TUI) is confirmed as a dedicated aligned project (`condor-tui`). Conductor Engine proceeds directly from Phase 3 to Phase 5 (Autonomous Operation).
+
+**First slice decision: Behavioral Retry**
+
+Rationale for choosing behavioral retry as the Phase 5 entry point:
+1. **Minimal surface** — adds `FailureContext` model, `RetryStrategy` Protocol, wiring in supervisor; no external deps
+2. **Durable by design** — failure context persists naturally in `audit_trail` (already exists)
+3. **Observable** — captures root cause, attempt adjustments, escalation triggers
+4. **Unlocks downstream** — failure knowledge is prerequisite for guild layer (Phase 6) and policy escalation rules
+5. **No big-bang risk** — default strategy replicates current mechanical retry; richer strategies are opt-in
+
+**Follow-up slices in order:**
+1. Behavioral retry (entry point)
+2. Escalation paths (`ESCALATED` status, configurable thresholds)
+3. OPA policy integration (`conductor-opa` addon)
+4. Human-in-the-loop toggle (auto-approve vs. require approval by risk level)
+5. Sandboxed execution (process/container isolation)
+
+**Key learning:** Phase 5 pillars are independent enough to slice — behavioral retry stands alone without requiring OPA or sandboxing to be useful. This avoids big-bang implementation.
+
+**Files written:**
+- `.squad/decisions/inbox/keaton-phase5-entry.md`
+
+---
+
 ### 2026-04-30 — Semantic release version policy
 
 **Requested by:** Dan

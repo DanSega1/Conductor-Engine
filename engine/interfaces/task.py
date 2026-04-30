@@ -23,6 +23,7 @@ class TaskStatus(StrEnum):
     APPROVED = "approved"
     POLICY_DENIED = "policy_denied"
     CANCELLED = "cancelled"
+    ESCALATED = "escalated"
 
 
 class RiskLevel(StrEnum):
