@@ -32,6 +32,41 @@ class PolicyDecision(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class OPAInput(BaseModel):
+    """Standard input bundle sent to an OPA REST endpoint.
+
+    Serialises to the JSON shape that Conductor's built-in Rego policies expect:
+
+        POST /v1/data/{policy_path}
+        {"input": {<this model's fields>}}
+
+    Rego policies can reference:
+        input.task.{id,name,capability,input,max_retries,workflow_id}
+        input.capability.{name,description,risk_level}
+        input.workdir
+    """
+
+    task: dict[str, Any]
+    capability: dict[str, Any]
+    workdir: str
+
+    @classmethod
+    def from_context(cls, task: TaskRecord, context: PolicyContext) -> OPAInput:
+        """Build an OPAInput from the supervisor's TaskRecord and PolicyContext."""
+        return cls(
+            task={
+                "id": task.task_id,
+                "name": task.name,
+                "capability": task.capability,
+                "input": task.input,
+                "max_retries": task.max_retries,
+                "workflow_id": task.workflow_id,
+            },
+            capability=context.capability.model_dump(),
+            workdir=context.workdir,
+        )
+
+
 class PolicyEngine(Protocol):
     """Contract for authorizing a task before capability execution."""
 
