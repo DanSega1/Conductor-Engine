@@ -50,6 +50,18 @@ Wrote two decision records to `.squad/decisions/inbox/` based on a research brie
 
 ---
 
+### 2026-04-30 — Semantic release version policy
+
+**Requested by:** Dan
+
+Resolved the roadmap backlog item on version policy. Chose Option 4: Accept rapid bumping. Rationale: semantic versioning already defines 0.x as unstable, so version churn before 1.0.0 is acceptable noise. Options 1-3 (squash-merge, `[skip release]`, scope filtering) add process friction without meaningful benefit for a small project. The real stability milestone is 1.0.0 — can revisit cadence controls when approaching that.
+
+**Files written:**
+- `.squad/decisions/inbox/keaton-version-policy.md`
+- Updated `docs/conductor/roadmap.md` to mark item done
+
+---
+
 ### 2026-03-31 — Project kickoff
 - Phase 1 is complete: Supervisor, registry, capabilities (echo, filesystem, http, memory), local JSON store, in-memory queue, `cond` CLI
 - Phase 2 is planned: agent roles (planner, worker, validator) per `docs/conductor/agent-interface.md`

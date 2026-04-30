@@ -1,5 +1,75 @@
 # Squad Decisions
 
+## [2026-04-30] Roadmap Session — Release Notes, Version Policy, Docs Workflow
+
+---
+
+### [2026-04-30] GitHub Release Notes Configuration — Kobayashi
+
+Configure `python-semantic-release` v10.5.3 to automatically populate GitHub release bodies with full changelog content from conventional commits.
+
+**Changes Made:**
+- Updated `pyproject.toml`: Added `upload_to_release = true` and `[tool.semantic_release.changelog]` section with template config
+- Created `.semantic_release_templates/release.md.j2`: Jinja2 template with "## What's Changed" header and full changelog
+- Updated roadmap status to `done (2026-04-14)`
+
+**Validation:** pyproject.toml valid TOML, template file created, release workflow permissions unchanged, Trusted Publishing preserved.
+
+**Status:** Ready for next release.
+
+---
+
+### [2026-04-30] python-semantic-release Template Variable Standard — Fenster (QA)
+
+Established standard for all PSR v10 templates in this project to use correct context variables.
+
+**Issue Found:** Kobayashi's initial template used `{{ repo }}` which is not a standard PSR v10 variable.
+
+**Standard Established:**
+- Use `{{ owner }}` for repository owner (e.g., "DanSega1")
+- Use `{{ repo_name }}` for repository name (e.g., "Conductor-Engine")
+- Use `{{ version }}` for release version
+- Use `{{ changelog }}` for formatted changelog
+- Never assume `{{ repo }}` variable exists
+
+**Impact:** Without fix, release links would be broken (`https://github.com/releases/tag/...`). With fix, links render as `https://github.com/DanSega1/Conductor-Engine/releases/tag/vX.Y.Z`.
+
+**Status:** APPROVED. All agents should follow this pattern for future PSR templates.
+
+---
+
+### [2026-04-30] Semantic Release Version Policy — Keaton
+
+**Decision:** Accept rapid bumping — `0.x` is explicitly unstable; version number does not imply maturity.
+
+**Rationale:** Options 1-3 (squash-merge, `[skip release]`, scope filtering) add process friction without meaningful benefit for single-developer project in pre-1.0 phase. SemVer already defines 0.x as unstable — users expect rapid API changes. The real stability milestone is 1.0.0.
+
+**Impact:** No change to current commit or release behavior. Continue using `feat:` commits; let semantic-release bump minor versions automatically. Document in README that `0.x` versions carry no stability guarantees. When approaching 1.0.0, revisit cadence controls if needed.
+
+**Status:** Done. No code changes required.
+
+---
+
+### [2026-04-30] Docs Check Workflow Design — Kobayashi
+
+Implemented `.github/workflows/docs-check.yml` to automate validation of documentation freshness per roadmap backlog item "Auto-update docs and README GitHub Action."
+
+**Key Choices:**
+1. **Workflow Isolation:** Separate workflow file with `continue-on-error: true` (non-blocking on merges)
+2. **Mermaid Validation:** `@mermaid-js/mermaid-cli` (npx mmdc) — official CLI tool, npm-installable, lightweight
+3. **Badge URL Checking:** curl-based HTTP status verification (200/302 = pass, 5s timeout) — no external action dependency
+4. **Issue Creation:** `gh issue create` with ambient `GITHUB_TOKEN` (preserves Trusted Publishing)
+5. **Trigger Paths:** `engine/**`, `docs/**`, `examples/**`
+
+**Trade-offs:**
+- Bash-heavy implementation: Easier to audit than custom action
+- Strict URL validation skipped: Only checks badges; full link-checking deferred
+- No PNG regeneration: Future enhancement (marked as deferred in roadmap)
+
+**Status:** Implemented. Workflow ready for CI/CD pipeline.
+
+---
+
 ## Active Decisions
 
 ---

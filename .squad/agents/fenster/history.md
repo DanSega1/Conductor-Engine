@@ -43,3 +43,14 @@
 - **`store.list()` loads all records** — stress tests revealed no pagination; when pagination is added, add a dedicated test asserting that `list()` respects page/limit parameters.
 - **`archived_at` on `TaskRecord`** — once the field is added (archive-over-delete directive), update `test_stress.py` to assert that archived records carry a non-null `archived_at` timestamp.
 - **`BombCapability` pattern is established** — injecting test-only capabilities via `registry._capabilities["name"] = CapabilityInstance()` is the accepted pattern for failure-simulation tests; reuse this in any future failure/chaos tests rather than introducing new injection mechanisms.
+
+### 2026-04-14 — Release notes QA review
+- QA'd Kobayashi's implementation of "Release notes on GitHub releases" roadmap backlog item
+- **Critical defect found and fixed:** Template used `{{ repo }}` but PSR v10 provides `{{ owner }}` and `{{ repo_name }}` as separate variables
+- Validated semantic-release config keys against PSR v10.5.3 spec: `upload_to_release`, `template_dir`, `changelog.default_templates.release_body` all valid
+- Template Jinja2 syntax validation: checked if/endif pairing, balanced braces, variable references
+- Template fallback handling: `{% if changelog %}...{% else %}No changes recorded.{% endif %}` prevents empty release bodies
+- Roadmap status date (2026-04-14) matches current session date — consistency check passed
+- No new test failures or lint issues introduced; pre-existing CLI test failures are unrelated (package not installed in dev mode)
+- **Learning:** python-semantic-release v10 template context provides `owner`, `repo_name`, `version`, `changelog` (NOT `repo` as a combined string)
+- **Pattern:** For PSR release templates, always use `{{ owner }}/{{ repo_name }}` for GitHub URLs, never assume a combined `{{ repo }}` variable exists
