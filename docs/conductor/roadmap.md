@@ -133,12 +133,13 @@ The platform enforces its own rules and recovers without a human present.
 
 - **Slice 1 — Failure contracts and escalation wiring** — `FailureContext`, `RetryStrategy`, `DefaultRetryStrategy` (with `enable_escalation`), `TaskStatus.ESCALATED`, `EventType.TASK_ESCALATED`, and full supervisor wiring. All transitions persist to the store and emit structured events.
 - **Slice 2 — Escalation threshold and CLI visibility** — `escalation_threshold` on `DefaultRetryStrategy` (escalate only when `attempt >= threshold`; `None` escalates on any exhaustion). ESCALATED tasks appear in `cond task list` with ⚠ bold-yellow marker and are selectable via `--status escalated`. Design-integrity invariant added.
+- **Slice 3 — OPA policy integration** — `OPAInput` standard bundle (task + capability + workdir serialised for Rego), `OPAPolicyEngine` (httpx HTTP client to OPA REST `/v1/data/{path}`; `fail_open`/`fail_closed` modes; `health_check()`), `RiskLevelPolicyEngine` (built-in rule-based engine; `deny_above`, `require_approval_at`, `allowed_capabilities` allowlist — works without OPA server). Both plug into the existing `PolicyEngine` Protocol without touching the supervisor.
 
 ### Planned
 
 - **Human-in-the-loop as a mode, not a requirement** — tasks, direction, and approvals can come from humans or from upstream systems. The engine does not stall waiting for human input unless explicitly configured to.
 - **Behavioral retry and recovery** — failure is not just retried mechanically. The platform logs failure context, adjusts subsequent attempts, and escalates after threshold breaches.
-- **Self-enforcing guardrails** — OPA integration at the supervisor level. Policies are evaluated before capability execution, not just at input validation. Deny decisions produce structured audit records.
+- **Self-enforcing guardrails** — OPA integration at the supervisor level. Policies are evaluated before capability execution, not just at input validation. Deny decisions produce structured audit records. ✅ Done in Slice 3.
 - **Sandboxed execution** — capability execution runs in isolated contexts; filesystem and network capabilities are constrained by policy, not just by code.
 - **Audit trail** — every task decision (allow, deny, retry, escalate) is recorded with enough context to reconstruct what happened and why.
 
