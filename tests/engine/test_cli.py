@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from cli.cond import main
@@ -61,6 +62,32 @@ def test_health_reports_cli_components(tmp_path: Path, capsys) -> None:
     assert "task_store" in captured.out
     assert "supervisor" in captured.out
     assert "healthy" in captured.out
+
+
+def test_snapshot_outputs_versioned_control_plane_json(tmp_path: Path, capsys) -> None:
+    store_file = tmp_path / "tasks.json"
+    _save_task(
+        store_file,
+        TaskRecord(
+            task_id="00000000-0000-0000-0000-000000000001",
+            name="approve-me",
+            capability="echo",
+            status=TaskStatus.AWAITING_APPROVAL,
+            workflow_id="wf-123",
+        ),
+    )
+
+    exit_code = main(["--store", str(store_file), "snapshot"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert payload["schema_version"] == "v1"
+    assert payload["tasks"][0]["task_id"] == "00000000-0000-0000-0000-000000000001"
+    assert payload["approvals"][0]["task_id"] == "00000000-0000-0000-0000-000000000001"
+    assert payload["workflows"][0]["workflow_id"] == "wf-123"
+    assert any(component["name"] == "registry" for component in payload["health"])
 
 
 def test_task_list_supports_status_offset_and_limit(tmp_path: Path, capsys) -> None:
@@ -251,6 +278,7 @@ def test_help_without_topic_lists_commands_and_capabilities(capsys) -> None:
     assert "cond help" in captured.out
     assert "workflow" in captured.out
     assert "health" in captured.out
+    assert "snapshot" in captured.out
     assert "echo" in captured.out
     assert "man cond" in captured.out
 
@@ -287,6 +315,17 @@ def test_help_workflow_shows_command_manual(capsys) -> None:
     assert exit_code == 0
     assert "cond workflow run <workflow-file>" in captured.out
     assert "goal: Echo two messages in sequence" in captured.out
+    assert "man cond" in captured.out
+
+
+def test_help_snapshot_shows_command_manual(capsys) -> None:
+    exit_code = main(["help", "snapshot"])
+
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "cond snapshot" in captured.out
+    assert "versioned control-plane snapshot" in captured.out
     assert "man cond" in captured.out
 
 

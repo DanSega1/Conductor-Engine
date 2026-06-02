@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 import json
 from pathlib import Path
+import tomllib
 from typing import Any, get_args, get_origin
 
 from pydantic import ValidationError
@@ -15,6 +17,7 @@ from rich.table import Table
 from rich.text import Text
 import yaml
 
+from engine.control_plane import build_control_plane_snapshot, build_health_components
 from engine.interfaces.task import TaskRecord, TaskStatus, TaskSubmission
 from engine.interfaces.workflow import PlanStep, WorkflowGoal, WorkflowResult
 from engine.loader import load_capabilities
@@ -93,6 +96,16 @@ COMMAND_HELP_TOPICS: dict[str, dict[str, str]] = {
         ),
         "example": "cond --store /tmp/tasks.json health",
     },
+    "snapshot": {
+        "summary": "Emit a versioned control-plane snapshot as JSON.",
+        "usage": "cond snapshot",
+        "details": (
+            "Builds a stable v1 snapshot for tasks, approvals, workflow traces, capabilities, "
+            "and component health. This is the bootstrap compatibility surface for local polling "
+            "until the Phase 4 HTTP/event control plane is exposed."
+        ),
+        "example": "cond --store /tmp/tasks.json snapshot",
+    },
 }
 
 MAN_PAGE_HINT = "See `man cond` for the static CLI reference."
@@ -120,6 +133,17 @@ STATUS_LABELS: dict[TaskStatus, str] = {
     TaskStatus.CANCELLED: "cancelled",
     TaskStatus.ESCALATED: "⚠ escalated",
 }
+
+
+def _cli_version() -> str:
+    try:
+        return _pkg_version("conductor-engine")
+    except PackageNotFoundError:
+        pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+        if not pyproject.exists():
+            return "0.0.0"
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        return str(data.get("project", {}).get("version", "0.0.0"))
 
 
 def _positive_int(value: str) -> int:
@@ -374,32 +398,37 @@ def _component_issues(component: object) -> list[str]:
     return list(checker())
 
 
-def _health_panel(registry: CapabilityRegistry, store: LocalTaskStore, supervisor: TaskSupervisor) -> int:
-    components = [
+def _health_components(
+    registry: CapabilityRegistry,
+    store: LocalTaskStore,
+    supervisor: TaskSupervisor,
+):
+    return build_health_components(
         ("registry", registry, f"{len(registry.names())} capabilities loaded"),
         ("task_store", store, str(store.path)),
         ("queue", supervisor.queue, f"{len(supervisor.queue.list())} queued"),
         ("event_bus", supervisor._bus, type(supervisor._bus).__name__),
         ("policy", supervisor._policy, type(supervisor._policy).__name__),
         ("supervisor", supervisor, supervisor.workdir),
-    ]
+    )
 
-    unhealthy = False
+
+def _health_panel(registry: CapabilityRegistry, store: LocalTaskStore, supervisor: TaskSupervisor) -> int:
+    health_components = _health_components(registry, store, supervisor)
+    unhealthy = any(not component.healthy for component in health_components)
     table = Table(show_header=True, header_style="bold", box=None, pad_edge=True)
     table.add_column("Component")
     table.add_column("Status")
     table.add_column("Details")
 
     issue_rows: list[tuple[str, str]] = []
-    for name, component, detail in components:
-        issues = _component_issues(component)
-        if issues:
-            unhealthy = True
-            table.add_row(name, Text("issues found", style="red"), detail)
-            for issue in issues:
-                issue_rows.append((name, issue))
+    for component in health_components:
+        if component.issues:
+            table.add_row(component.name, Text("issues found", style="red"), component.detail)
+            for issue in component.issues:
+                issue_rows.append((component.name, issue))
         else:
-            table.add_row(name, Text("healthy", style="green"), detail)
+            table.add_row(component.name, Text("healthy", style="green"), component.detail)
 
     console.print(Panel(table, title="cond health", border_style="red" if unhealthy else "green"))
 
@@ -414,6 +443,19 @@ def _health_panel(registry: CapabilityRegistry, store: LocalTaskStore, superviso
 
     console.print(Panel("All CLI-facing components passed health_check().", border_style="green"))
     return 0
+
+
+def _snapshot_output(
+    registry: CapabilityRegistry,
+    store: LocalTaskStore,
+    supervisor: TaskSupervisor,
+) -> None:
+    snapshot = build_control_plane_snapshot(
+        tasks=supervisor.list_tasks(),
+        registry=registry,
+        health_components=_health_components(registry, store, supervisor),
+    )
+    console.file.write(snapshot.model_dump_json(indent=2) + "\n")
 
 
 def _resolve_task(supervisor: TaskSupervisor, task_id_or_prefix: str) -> TaskRecord:
@@ -580,7 +622,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"cond {_pkg_version('conductor-engine')}",
+        version=f"cond {_cli_version()}",
     )
     parser.add_argument(
         "--store",
@@ -640,6 +682,7 @@ def build_parser() -> argparse.ArgumentParser:
     wf_run.add_argument("workflow_file", help="Path to a YAML or JSON workflow file.")
 
     subparsers.add_parser("health", help="Run CLI-facing health checks.")
+    subparsers.add_parser("snapshot", help="Emit a versioned control-plane snapshot as JSON.")
 
     help_parser = subparsers.add_parser("help", help="Show offline help topics.")
     help_parser.add_argument("topic", nargs="?", help="Optional command or capability topic.")
@@ -717,6 +760,10 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "health":
             return _health_panel(registry, store, supervisor)
+
+        if args.command == "snapshot":
+            _snapshot_output(registry, store, supervisor)
+            return 0
 
         if args.command == "help":
             return _render_help(args.topic, registry)
