@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from importlib.metadata import PackageNotFoundError, version as _pkg_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 import json
 from pathlib import Path
 import tomllib
