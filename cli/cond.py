@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import argparse
-from importlib.metadata import version as _pkg_version
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 import json
 from pathlib import Path
+import tomllib
 from typing import Any, get_args, get_origin
 
 from pydantic import ValidationError
@@ -131,6 +132,17 @@ STATUS_LABELS: dict[TaskStatus, str] = {
     TaskStatus.CANCELLED: "cancelled",
     TaskStatus.ESCALATED: "⚠ escalated",
 }
+
+
+def _cli_version() -> str:
+    try:
+        return _pkg_version("conductor-engine")
+    except PackageNotFoundError:
+        pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+        if not pyproject.exists():
+            return "0.0.0"
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        return str(data.get("project", {}).get("version", "0.0.0"))
 
 
 def _positive_int(value: str) -> int:
@@ -442,7 +454,7 @@ def _snapshot_output(
         registry=registry,
         health_components=_health_components(registry, store, supervisor),
     )
-    console.print(snapshot.model_dump_json(indent=2))
+    console.file.write(snapshot.model_dump_json(indent=2) + "\n")
 
 
 def _resolve_task(supervisor: TaskSupervisor, task_id_or_prefix: str) -> TaskRecord:
@@ -609,7 +621,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"cond {_pkg_version('conductor-engine')}",
+        version=f"cond {_cli_version()}",
     )
     parser.add_argument(
         "--store",
