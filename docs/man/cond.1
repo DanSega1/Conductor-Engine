@@ -56,6 +56,10 @@ Cancel a task in \fBAWAITING_APPROVAL\fR state.
 Run \fBhealth_check()\fR across the CLI-facing runtime components.
 Returns exit code 0 when healthy and 1 when any issues are reported.
 .TP
+.B cond snapshot
+Emit a versioned JSON control-plane snapshot for tasks, approvals, workflow traces,
+capabilities, and component health.
+.TP
 .B cond help [\fITOPIC\fR]
 Show offline dynamic help for commands and capabilities.
 Capability help is runtime-aware and remains available here instead of through separate manpages.
@@ -84,6 +88,11 @@ cond task approve 4df2c8ab
 Run health checks:
 .EX
 cond health
+.EE
+.TP
+Export the Phase 4 bootstrap snapshot:
+.EX
+cond snapshot
 .EE
 .TP
 Read static CLI reference:
