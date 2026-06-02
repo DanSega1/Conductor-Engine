@@ -13,14 +13,14 @@ flowchart LR
     P1["Phase 1 Core Runtime ✅ complete"]
     P2["Phase 2 Workflow Layer ✅ complete"]
     P3["Phase 3 Production Hardening"]
-    P4["Phase 4 TUI"]
+    P4["Phase 4 Control Plane + TUI"]
     P5["Phase 5 Autonomous Operation"]
     P6["Phase 6 Guild Layer"]
     P7["Phase 7 Remote Deployment"]
 
     P1 -->|"adds orchestration above supervisor"| P2
     P2 -->|"harden & make async + observable"| P3
-    P3 -->|"HTTP API feeds the UI"| P4
+    P3 -->|"versioned API + events feed operator clients"| P4
     P3 -->|"stable event model enables self-enforcement"| P5
     P5 -->|"failures become shared knowledge"| P6
     P5 -->|"OPA + audit enables safe remote ops"| P7
@@ -140,10 +140,16 @@ flowchart LR
 
 ## Diagram 5 — Security and Policy Layer
 
-How the policy and trust model evolves from Phase 5 through Phase 7.
+How the operator, policy, and trust model evolves from Phase 4 through Phase 7.
 
 ```mermaid
 flowchart TD
+    subgraph P4["Phase 4 — Control Plane + TUI"]
+        API["Versioned control-plane API"]
+        STREAM["Structured event stream + snapshots"]
+        CLIENTS["CLI / TUI / SDK clients"]
+    end
+
     subgraph P5["Phase 5 — Autonomous Operation"]
         OPA["OPA Policy Engine (before capability exec)"]
         AUDIT["Audit Trail (allow / deny / retry / escalate)"]
@@ -158,19 +164,21 @@ flowchart TD
     end
 
     subgraph P7["Phase 7 — Remote Deployment"]
-        API["REST API (supervisor over HTTP)"]
         AUTH["Auth + Authorization (OPA governs caller rights)"]
         MT["Multi-Tenant (isolated registries + stores)"]
+        RUNNERS["Remote runners / CI targets"]
         DEPLOY["Deploy targets Docker / systemd / K8s"]
     end
 
+    API --> STREAM
+    STREAM --> CLIENTS
     OPA --> AUDIT
     BRET --> GUILD
     GUILD --> PEER
     PEER --> OPA
-    P5 --> API
     API --> AUTH
     AUTH --> MT
+    AUTH --> RUNNERS
 ```
 
 ---
@@ -184,7 +192,7 @@ flowchart TD
     P1_SUP["Supervisor Phase 1"]
     P2_SUP["Supervisor Phase 2 — unchanged"]
     P3_SUP["Async Supervisor Phase 3"]
-    P7_SUP["Remote Supervisor Phase 7 (HTTP API)"]
+    P7_SUP["Protected Remote Supervisor Phase 7"]
 
     P2_ORCH["Orchestrator Phase 2 (sync, sequential)"]
     P3_ORCH["Orchestrator Phase 3 (async, parallel steps)"]
@@ -197,7 +205,7 @@ flowchart TD
 
     P1_SUP -->|"no changes"| P2_SUP
     P2_SUP -->|"add async"| P3_SUP
-    P3_SUP -->|"wrap in HTTP"| P7_SUP
+    P3_SUP -->|"harden remote control plane"| P7_SUP
 
     P2_ORCH -->|"add parallelism + timeouts"| P3_ORCH
 

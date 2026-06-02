@@ -104,24 +104,41 @@ Stability, observability, and deployment-readiness.
 
 ---
 
-## Phase 4 — TUI (future)
+## Phase 4 — Control Plane + TUI (future)
 
-A standalone terminal UI for monitoring and operating a running Conductor instance.
+A standalone operator surface for monitoring and operating a running Conductor instance.
 
-**Stack:** Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea)
+This is the next phase.
+
+**Goal:** define the versioned control-plane contracts that both `cond` and `condor-tui` consume, so the UI and engine support each other without sharing process internals or scraping implementation details.
+
+**Stack:** Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea) for the TUI; HTTP/JSON + structured events on the engine side.
 
 Scope (tentative):
+- Stable read models for tasks, workflows, capabilities, approvals, audit trail, and health
+- Control actions for submit, approve, cancel, retry, and workflow start
+- Event stream + snapshot feed for live views; local file polling remains a bootstrap compatibility mode
 - Live task queue and status board
 - Workflow execution trace (step-by-step result view)
 - Capability registry browser
 - Log tail with filtering
+- Thin Go/Python client SDKs over the same contracts for local tools, CI jobs, and remote automation
+
+`DanSega1/condor-tui` already proves the operator experience and tab model. Phase 4 turns that reference client into a first-class consumer of stable engine contracts instead of local storage conventions.
+
+**Missing prerequisites identified from Phases 1–3:**
+- A versioned API boundary for task queries, workflow traces, approvals, and audit data
+- A stable event schema that UIs and addons can subscribe to without coupling to internal Python objects
+- Addon metadata and health discovery so tools can surface memory/MCP/plugin capabilities cleanly
+- Command boundaries for approval/cancel/retry before Phase 7 hardens remote access and multi-tenant policy
+- Shared client contracts so the CLI, TUI, CI jobs, and remote wrappers use the same surface area
 
 **Why a separate binary:**
 - Conductor Engine is a Python library and CLI tool — the TUI has no reason to share the runtime process
 - Go compiles to a single static binary with no interpreter dependency, making it easy to distribute alongside the Python package
 - Bubble Tea is purpose-built for this kind of interactive terminal work
 
-**Target:** After Phase 3 — when the HTTP API and stable event model exist to feed the UI without polling hacks.
+**Target:** After Phase 3. This closes the current roadmap gap where the TUI already expects an API/event model but the API was previously named only in Phase 7.
 
 ---
 
@@ -138,6 +155,7 @@ The platform enforces its own rules and recovers without a human present.
 ### Planned
 
 - **Human-in-the-loop as a mode, not a requirement** — tasks, direction, and approvals can come from humans or from upstream systems. The engine does not stall waiting for human input unless explicitly configured to.
+- **Schedules and external triggers** — cron, webhooks, CI jobs, and other upstream systems submit work through the same control plane instead of bypassing the supervisor.
 - **Behavioral retry and recovery** — failure is not just retried mechanically. The platform logs failure context, adjusts subsequent attempts, and escalates after threshold breaches.
 - **Self-enforcing guardrails** — OPA integration at the supervisor level. Policies are evaluated before capability execution, not just at input validation. Deny decisions produce structured audit records. ✅ Done in Slice 3.
 - **Sandboxed execution** — capability execution runs in isolated contexts; filesystem and network capabilities are constrained by policy, not just by code.
@@ -163,16 +181,29 @@ The "guild" is a cross-project knowledge layer — a structured way for agent ro
 
 Conductor running on a VPS, cloud instance, or remote machine — protected, efficient, and auditable.
 
-- **Remote-first HTTP API** — the supervisor exposes a stable REST API. The CLI becomes a thin client over it. Local and remote operation are identical from the caller's perspective.
+- **Protected control plane** — harden the Phase 4 API with authn/authz, secret handling, transport security, and operational defaults fit for remote use.
 - **Authentication and authorization** — API calls require auth. OPA policies govern what callers can submit (which capabilities, which inputs, under what conditions).
 - **Multi-tenant isolation** — separate capability registries, task stores, and guardrail policies per tenant.
 - **Efficient resource management** — capability concurrency limits, queue depth controls, backpressure when the system is under load.
+- **Remote runners and CI targets** — remote machines, CI pipelines, and protected workers register as execution targets without bypassing supervisor, policy, or audit boundaries.
 - **Deployment targets** — single binary (via a thin Go wrapper or containerized Python), `systemd` unit, Docker image, Kubernetes operator pattern.
 - **Protected by default** — no capability executes without a policy allow decision. Default-deny with explicit permit grants.
 
 This is the "OpenClaw-style but more protected and efficient" target — a hardened, remotely-operated orchestration platform with policy enforcement and a learning layer.
 
 ---
+
+## Platform layering (decided)
+
+The engine should stay versatile by keeping reusable platform concerns low in the stack and product-specific concerns above it.
+
+- **Core engine** — supervisor lifecycle, workflow orchestration, policy, storage contracts, event model, control-plane API, and addon seams
+- **Addon layer** — reusable extensions such as memory providers, MCP bridges, schedulers/cron triggers, SDK clients, and remote runner adapters
+- **Product layer** — `condor-tui`, a future web UI, SDLC/CI wrappers, and domain-specific orchestration systems built on the core contracts
+
+Rule of thumb:
+- If the feature changes execution semantics or adds reusable infrastructure, put it in the engine or addon layer.
+- If the feature is presentation, domain opinion, or product workflow, keep it in a wrapper project above the engine.
 
 ## Out of scope (explicitly)
 
@@ -184,7 +215,7 @@ These belong in programs built *on top of* Conductor, not inside it:
 | Distributed task queues (Redis, Celery) | Infrastructure — compose it in, don't embed it |
 | Persistent workflow state across restarts | Downstream storage concern until Phase 3 defines the store interface |
 | Copilot / agent framework | Conductor is the substrate; agents are consumers |
-| UI beyond the TUI | Web dashboard is an integration, not a platform primitive |
+| Product-specific UI beyond the reference clients | A web dashboard or vertical wrapper can be built on top of the control plane, but it is not a platform primitive |
 
 ---
 
