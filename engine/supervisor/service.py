@@ -256,6 +256,16 @@ class TaskSupervisor:
                 metadata=policy_metadata,
             )
 
+        self._append_audit(
+            task,
+            actor="policy",
+            action="allowed",
+            from_status=TaskStatus.PENDING,
+            to_status=TaskStatus.PENDING,
+            metadata=policy_metadata,
+        )
+        self._save_task(task)
+
         return task
 
     def _do_escalate(
