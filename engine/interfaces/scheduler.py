@@ -18,6 +18,7 @@ def _now() -> datetime:
 
 class TriggerSource(StrEnum):
     CRON = "cron"
+    WEBHOOK = "webhook"
 
 
 class TriggerDispatch(BaseModel):

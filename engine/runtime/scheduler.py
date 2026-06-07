@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections import deque
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any, Protocol
 
-from engine.interfaces.scheduler import TriggerDispatch, TriggerSource
-from engine.interfaces.task import TaskSubmission
+from engine.interfaces.scheduler import ExternalTriggerAdapter, TriggerDispatch, TriggerSource
+from engine.interfaces.task import TaskRecord, TaskSubmission
 
 
 def _normalize_now(now: datetime | None) -> datetime:
@@ -142,3 +145,134 @@ class CronTriggerAdapter:
 
     def health_check(self) -> list[str]:
         return []
+
+
+class WebhookTriggerAdapter:
+    """External trigger adapter that turns webhook payloads into submissions.
+
+    This adapter is transport-agnostic. Callers push incoming webhook payloads
+    via `enqueue_payload()`, and the scheduler service consumes them through
+    regular `poll()` cycles.
+    """
+
+    def __init__(
+        self,
+        *,
+        name: str,
+        mapper: Callable[[dict[str, Any]], TaskSubmission],
+    ) -> None:
+        self.name = name
+        self._mapper = mapper
+        self._pending_payloads: deque[tuple[datetime, dict[str, Any]]] = deque()
+
+    def enqueue_payload(
+        self,
+        payload: dict[str, Any],
+        *,
+        received_at: datetime | None = None,
+    ) -> None:
+        self._pending_payloads.append((_normalize_now(received_at), dict(payload)))
+
+    def poll(self, *, now: datetime | None = None) -> list[TriggerDispatch]:
+        del now  # Webhook dispatch timing is based on reception time.
+
+        dispatches: list[TriggerDispatch] = []
+        while self._pending_payloads:
+            scheduled_for, payload = self._pending_payloads.popleft()
+            submission = self._mapper(payload)
+            dispatches.append(
+                TriggerDispatch(
+                    source=TriggerSource.WEBHOOK,
+                    trigger_name=self.name,
+                    scheduled_for=scheduled_for,
+                    submission=submission,
+                )
+            )
+        return dispatches
+
+    def health_check(self) -> list[str]:
+        return []
+
+
+class WebhookIngressService:
+    """Minimal ingress boundary for HTTP-style webhook payload delivery.
+
+    Transport layers (HTTP server, API gateway handler, etc.) should call
+    `ingest()` after decoding request data.
+    """
+
+    def __init__(self, *, adapters: list[WebhookTriggerAdapter]) -> None:
+        self._adapters_by_name = {adapter.name: adapter for adapter in adapters}
+
+    def ingest(
+        self,
+        *,
+        trigger_name: str,
+        payload: dict[str, Any],
+        received_at: datetime | None = None,
+    ) -> None:
+        adapter = self._adapters_by_name.get(trigger_name)
+        if adapter is None:
+            raise ValueError(f"Unknown webhook trigger {trigger_name!r}")
+
+        adapter.enqueue_payload(payload, received_at=received_at)
+
+
+class SubmissionSink(Protocol):
+    """Minimal submit interface used by the scheduler service."""
+
+    def submit(self, submission: TaskSubmission) -> TaskRecord:
+        """Submit a task for supervisor-managed execution."""
+
+
+class TriggerSchedulerService:
+    """Polling service that forwards external trigger dispatches into submit()."""
+
+    def __init__(
+        self,
+        *,
+        adapters: list[ExternalTriggerAdapter],
+        sink: SubmissionSink,
+    ) -> None:
+        self.adapters = adapters
+        self.sink = sink
+        self._runtime_issues: list[str] = []
+
+    @staticmethod
+    def _with_trigger_metadata(dispatch: TriggerDispatch) -> TaskSubmission:
+        submission = dispatch.submission.model_copy(deep=True)
+        submission.metadata = {
+            **submission.metadata,
+            "trigger": {
+                "dispatch_id": dispatch.dispatch_id,
+                "source": dispatch.source,
+                "trigger_name": dispatch.trigger_name,
+                "scheduled_for": dispatch.scheduled_for.isoformat(),
+                "emitted_at": dispatch.emitted_at.isoformat(),
+            },
+        }
+        return submission
+
+    def run_once(self, *, now: datetime | None = None) -> list[TaskRecord]:
+        self._runtime_issues = []
+        submitted: list[TaskRecord] = []
+        for adapter in self.adapters:
+            try:
+                dispatches = adapter.poll(now=now)
+            except Exception as exc:
+                self._runtime_issues.append(f"scheduler: adapter poll failed: {exc}")
+                continue
+
+            for dispatch in dispatches:
+                submission = self._with_trigger_metadata(dispatch)
+                submitted.append(self.sink.submit(submission))
+        return submitted
+
+    def health_check(self) -> list[str]:
+        issues = list(self._runtime_issues)
+        for adapter in self.adapters:
+            try:
+                issues.extend(adapter.health_check())
+            except Exception as exc:
+                issues.append(f"scheduler: adapter health check failed: {exc}")
+        return issues
