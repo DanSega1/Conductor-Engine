@@ -24,15 +24,19 @@ This project is AI-enhanced. A significant portion of the code, tests, and docum
 
 ## Roadmap Status
 
+> `condor-tui` already exists; Phase 4 is focused on aligning it to stable, versioned engine control-plane contracts.
+
 | Phase | Status | Focus |
 | --- | --- | --- |
 | [Phase 1: Core Runtime](docs/conductor/roadmap.md#phase-1--core-runtime-complete) | Complete | Single-process task execution, core capabilities, guardrails, local storage, and baseline CLI support. |
 | [Phase 2: Workflow Layer](docs/conductor/roadmap.md#phase-2--workflow-layer-complete) | Complete | Planner, worker, validator, and orchestrator contracts over the existing supervisor path. |
 | [Phase 3: Production Hardening](docs/conductor/roadmap.md#phase-3--production-hardening-complete) | Complete | Observability, policies, pluggable stores, approvals, and parallel workflow execution. |
-| [Phase 4: Control Plane + TUI](docs/conductor/roadmap.md#phase-4--control-plane--tui-future) | Planned | Versioned operator API/event contracts plus a terminal-first client for live visibility and control. |
-| [Phase 5: Autonomous Operation](docs/conductor/roadmap.md#phase-5--autonomous-operation) | Planned | Self-enforcing policy, recovery, auditability, and unattended execution paths. |
+| [Phase 4: Control Plane + TUI](docs/conductor/roadmap.md#phase-4--control-plane--tui-wip) | WIP | Align existing `condor-tui` to stable, versioned control-plane API/event contracts for live visibility and control. |
+| [Phase 5: Autonomous Operation](docs/conductor/roadmap.md#phase-5--autonomous-operation-wip) | WIP | Self-enforcing policy, recovery, auditability, and unattended execution paths. |
 | [Phase 6: Guild Layer](docs/conductor/roadmap.md#phase-6--guild-layer) | Planned | Cross-project failure learning and role-scoped knowledge sharing. |
 | [Phase 7: Remote Deployment and Protected Operation](docs/conductor/roadmap.md#phase-7--remote-deployment-and-protected-operation) | Planned | Protected remote operation, multi-tenant isolation, remote runners, and hardened deployment targets. |
+
+> **Phase 5 Priority:** Backlog now includes an integration test suite that mimics user, wrapper, and TUI activities against control-plane contracts to protect API/event compatibility as autonomous operation expands.
 
 See the [full roadmap](docs/conductor/roadmap.md) for phase scope, rationale, and backlog details.
 

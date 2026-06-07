@@ -104,11 +104,15 @@ Stability, observability, and deployment-readiness.
 
 ---
 
-## Phase 4 — Control Plane + TUI (future)
+## Phase 4 — Control Plane + TUI (WIP)
 
-A standalone operator surface for monitoring and operating a running Conductor instance.
+Currently in progress. A standalone operator surface for monitoring and operating a running Conductor instance.
 
-This is the next phase.
+### Current State
+
+- `DanSega1/condor-tui` already exists and proves the operator experience and tab model
+- Phase 4 is aligning the TUI as a first-class consumer of stable, versioned engine control-plane contracts instead of local storage conventions
+- Removing direct dependency on implementation details; stabilizing read models, control actions, and event schema
 
 **Goal:** define the versioned control-plane contracts that both `cond` and `condor-tui` consume, so the UI and engine support each other without sharing process internals or scraping implementation details.
 
@@ -142,7 +146,7 @@ Scope (tentative):
 
 ---
 
-## Phase 5 — Autonomous Operation
+## Phase 5 — Autonomous Operation (WIP)
 
 The platform enforces its own rules and recovers without a human present.
 
@@ -151,11 +155,15 @@ The platform enforces its own rules and recovers without a human present.
 - **Slice 1 — Failure contracts and escalation wiring** — `FailureContext`, `RetryStrategy`, `DefaultRetryStrategy` (with `enable_escalation`), `TaskStatus.ESCALATED`, `EventType.TASK_ESCALATED`, and full supervisor wiring. All transitions persist to the store and emit structured events.
 - **Slice 2 — Escalation threshold and CLI visibility** — `escalation_threshold` on `DefaultRetryStrategy` (escalate only when `attempt >= threshold`; `None` escalates on any exhaustion). ESCALATED tasks appear in `cond task list` with ⚠ bold-yellow marker and are selectable via `--status escalated`. Design-integrity invariant added.
 - **Slice 3 — OPA policy integration** — `OPAInput` standard bundle (task + capability + workdir serialised for Rego), `OPAPolicyEngine` (httpx HTTP client to OPA REST `/v1/data/{path}`; `fail_open`/`fail_closed` modes; `health_check()`), `RiskLevelPolicyEngine` (built-in rule-based engine; `deny_above`, `require_approval_at`, `allowed_capabilities` allowlist — works without OPA server). Both plug into the existing `PolicyEngine` Protocol without touching the supervisor.
+- **Slice 4 — Schedules and trigger adapters (initial)** — Added scheduler contracts (`TriggerDispatch`, `ExternalTriggerAdapter`) and runtime adapters for cron and webhook ingestion (`CronTriggerAdapter`, `WebhookTriggerAdapter`) with deterministic poll semantics.
+- **Slice 5 — Trigger scheduler service (initial)** — Added `TriggerSchedulerService` to poll adapters and submit mapped dispatches through the supervisor path (`submit()` sink), including trigger provenance metadata enrichment and health/runtime issue aggregation.
+- **Slice 6 — Webhook ingress boundary (initial)** — Added `WebhookIngressService` as a transport-facing seam that routes decoded webhook payloads to named webhook adapters, with end-to-end coverage from ingress to scheduler submission.
 
 ### Planned
 
 - **Human-in-the-loop as a mode, not a requirement** — tasks, direction, and approvals can come from humans or from upstream systems. The engine does not stall waiting for human input unless explicitly configured to.
 - **Schedules and external triggers** — cron, webhooks, CI jobs, and other upstream systems submit work through the same control plane instead of bypassing the supervisor.
+- **Schedules and external triggers** — cron/webhook adapter seams and minimal ingress are now in core; remaining work is production HTTP bindings, CI/event-source integrations, lifecycle controls (poll loops, backoff), and production hardening.
 - **Behavioral retry and recovery** — failure is not just retried mechanically. The platform logs failure context, adjusts subsequent attempts, and escalates after threshold breaches.
 - **Self-enforcing guardrails** — OPA integration at the supervisor level. Policies are evaluated before capability execution, not just at input validation. Deny decisions produce structured audit records. ✅ Done in Slice 3.
 - **Sandboxed execution** — capability execution runs in isolated contexts; filesystem and network capabilities are constrained by policy, not just by code.
@@ -222,6 +230,16 @@ These belong in programs built *on top of* Conductor, not inside it:
 ## Backlog — Engineering & Developer Experience
 
 Cross-cutting tasks not tied to a specific phase. Prioritised roughly — address before / during Phase 3.
+
+### Integration tests that mimic user/wrapper/TUI activity
+
+Status: planned (Phase 5 follow-up)
+
+Add an integration suite that validates end-to-end operator and wrapper flows against control-plane contracts:
+- Simulate user-like activity through CLI and wrapper-style task submissions, then assert task status progression, audit visibility, and approval transitions.
+- Simulate TUI-style read patterns (list/watch/trace) against versioned contracts to verify schema stability as Phase 4 and Phase 5 evolve.
+- Cover webhook-triggered submissions through scheduler ingress to supervisor submit path and assert trigger metadata provenance in stored task records.
+- Add regression fixtures to ensure external consumers (CLI wrappers and TUI clients) do not break when runtime internals change.
 
 ### ⚠️ Time-sensitive: GitHub Actions — Node.js 24 migration (deadline: June 2, 2026)
 
