@@ -11,6 +11,7 @@ from engine.interfaces.task import TaskRecord, TaskSubmission
 from engine.runtime.scheduler import (
     CronSchedule,
     CronTriggerAdapter,
+    TriggerSchedulerLoopRunner,
     TriggerSchedulerService,
     WebhookIngressService,
     WebhookTriggerAdapter,
@@ -284,3 +285,151 @@ def test_webhook_ingress_to_scheduler_service_end_to_end() -> None:
     assert sink.submissions[0].name == "webhook:push"
     assert sink.submissions[0].metadata["trigger"]["source"] == TriggerSource.WEBHOOK.value
     assert sink.submissions[0].input["payload"]["repo"] == "Conductor-Engine"
+
+
+def _record(name: str) -> TaskRecord:
+    return TaskRecord(name=name, capability="echo")
+
+
+class _StopAfterCycles:
+    def __init__(self, *, limit: int) -> None:
+        self.limit = limit
+        self.cycles_seen = 0
+
+    def mark_cycle(self) -> None:
+        self.cycles_seen += 1
+
+    def is_set(self) -> bool:
+        return self.cycles_seen >= self.limit
+
+
+def test_scheduler_loop_runner_respects_max_cycles() -> None:
+    class EmptyAdapter:
+        def poll(self, *, now: datetime | None = None) -> list[TriggerDispatch]:
+            return []
+
+        def health_check(self) -> list[str]:
+            return []
+
+    class CapturingSink:
+        def submit(self, submission: TaskSubmission) -> TaskRecord:
+            return _record(submission.name)
+
+    service = TriggerSchedulerService(adapters=[EmptyAdapter()], sink=CapturingSink())
+    sleeps: list[float] = []
+
+    runner = TriggerSchedulerLoopRunner(
+        service=service,
+        base_poll_interval_seconds=1.0,
+        max_poll_interval_seconds=8.0,
+        sleep_fn=sleeps.append,
+    )
+
+    cycles = runner.run(max_cycles=3)
+
+    assert cycles == 3
+    assert sleeps == [1.0, 2.0]
+
+
+def test_scheduler_loop_runner_applies_backoff_and_resets_after_work() -> None:
+    class ScriptedAdapter:
+        def __init__(self) -> None:
+            self._polls = 0
+
+        def poll(self, *, now: datetime | None = None) -> list[TriggerDispatch]:
+            self._polls += 1
+            if self._polls == 3:
+                return [
+                    TriggerDispatch(
+                        source=TriggerSource.CRON,
+                        trigger_name="scripted",
+                        scheduled_for=_dt(year=2026, month=6, day=7, hour=12, minute=0),
+                        submission=TaskSubmission(name="tick", capability="echo"),
+                    )
+                ]
+            return []
+
+        def health_check(self) -> list[str]:
+            return []
+
+    class CapturingSink:
+        def submit(self, submission: TaskSubmission) -> TaskRecord:
+            return _record(submission.name)
+
+    service = TriggerSchedulerService(adapters=[ScriptedAdapter()], sink=CapturingSink())
+    sleeps: list[float] = []
+
+    runner = TriggerSchedulerLoopRunner(
+        service=service,
+        base_poll_interval_seconds=1.0,
+        max_poll_interval_seconds=8.0,
+        sleep_fn=sleeps.append,
+    )
+
+    cycles = runner.run(max_cycles=5)
+
+    assert cycles == 5
+    assert sleeps == [1.0, 2.0, 1.0, 1.0]
+
+
+def test_scheduler_loop_runner_stops_gracefully_from_stop_signal() -> None:
+    stop = _StopAfterCycles(limit=2)
+
+    class EmptyAdapter:
+        def poll(self, *, now: datetime | None = None) -> list[TriggerDispatch]:
+            stop.mark_cycle()
+            return []
+
+        def health_check(self) -> list[str]:
+            return []
+
+    class CapturingSink:
+        def submit(self, submission: TaskSubmission) -> TaskRecord:
+            return _record(submission.name)
+
+    service = TriggerSchedulerService(adapters=[EmptyAdapter()], sink=CapturingSink())
+    sleeps: list[float] = []
+
+    runner = TriggerSchedulerLoopRunner(
+        service=service,
+        base_poll_interval_seconds=1.0,
+        max_poll_interval_seconds=8.0,
+        stop_signal=stop,
+        sleep_fn=sleeps.append,
+    )
+
+    cycles = runner.run()
+
+    assert cycles == 2
+    assert sleeps == [1.0]
+
+
+def test_scheduler_loop_runner_uses_deterministic_jitter_hook() -> None:
+    class EmptyAdapter:
+        def poll(self, *, now: datetime | None = None) -> list[TriggerDispatch]:
+            return []
+
+        def health_check(self) -> list[str]:
+            return []
+
+    class CapturingSink:
+        def submit(self, submission: TaskSubmission) -> TaskRecord:
+            return _record(submission.name)
+
+    service = TriggerSchedulerService(adapters=[EmptyAdapter()], sink=CapturingSink())
+    sleeps: list[float] = []
+
+    jitter_values = iter([0.5, 0.25])
+    runner = TriggerSchedulerLoopRunner(
+        service=service,
+        base_poll_interval_seconds=2.0,
+        max_poll_interval_seconds=8.0,
+        jitter_ratio=0.1,
+        random_fn=lambda: next(jitter_values),
+        sleep_fn=sleeps.append,
+    )
+
+    cycles = runner.run(max_cycles=3)
+
+    assert cycles == 3
+    assert sleeps == [2.1, 4.1]

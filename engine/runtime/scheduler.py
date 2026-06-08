@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable
 from datetime import UTC, datetime
+import random
+from time import sleep as default_sleep
 from typing import Any, Protocol
 
 from engine.interfaces.scheduler import ExternalTriggerAdapter, TriggerDispatch, TriggerSource
@@ -225,6 +227,13 @@ class SubmissionSink(Protocol):
         """Submit a task for supervisor-managed execution."""
 
 
+class StopSignal(Protocol):
+    """Stop flag abstraction compatible with threading or asyncio events."""
+
+    def is_set(self) -> bool:
+        """Return True when the loop should stop."""
+
+
 class TriggerSchedulerService:
     """Polling service that forwards external trigger dispatches into submit()."""
 
@@ -276,3 +285,92 @@ class TriggerSchedulerService:
             except Exception as exc:
                 issues.append(f"scheduler: adapter health check failed: {exc}")
         return issues
+
+
+class TriggerSchedulerLoopRunner:
+    """Lifecycle control loop for repeated TriggerSchedulerService polling."""
+
+    def __init__(
+        self,
+        *,
+        service: TriggerSchedulerService,
+        base_poll_interval_seconds: float = 1.0,
+        max_poll_interval_seconds: float = 30.0,
+        backoff_multiplier: float = 2.0,
+        jitter_ratio: float = 0.0,
+        stop_signal: StopSignal | None = None,
+        sleep_fn: Callable[[float], None] = default_sleep,
+        random_fn: Callable[[], float] = random.random,
+        now_fn: Callable[[], datetime] | None = None,
+    ) -> None:
+        if base_poll_interval_seconds <= 0:
+            raise ValueError("base_poll_interval_seconds must be > 0")
+        if max_poll_interval_seconds < base_poll_interval_seconds:
+            raise ValueError(
+                "max_poll_interval_seconds must be >= base_poll_interval_seconds"
+            )
+        if backoff_multiplier < 1.0:
+            raise ValueError("backoff_multiplier must be >= 1.0")
+        if jitter_ratio < 0:
+            raise ValueError("jitter_ratio must be >= 0")
+
+        self.service = service
+        self.base_poll_interval_seconds = base_poll_interval_seconds
+        self.max_poll_interval_seconds = max_poll_interval_seconds
+        self.backoff_multiplier = backoff_multiplier
+        self.jitter_ratio = jitter_ratio
+        self.stop_signal = stop_signal
+        self.sleep_fn = sleep_fn
+        self.random_fn = random_fn
+        self.now_fn = now_fn
+
+    def _should_stop(self) -> bool:
+        if self.stop_signal is None:
+            return False
+        return self.stop_signal.is_set()
+
+    def _compute_interval_seconds(self, *, consecutive_idle_cycles: int) -> float:
+        if consecutive_idle_cycles <= 0:
+            interval = self.base_poll_interval_seconds
+        else:
+            exponent = consecutive_idle_cycles - 1
+            interval = self.base_poll_interval_seconds * (self.backoff_multiplier**exponent)
+            interval = min(interval, self.max_poll_interval_seconds)
+
+        if self.jitter_ratio > 0:
+            interval += interval * self.jitter_ratio * self.random_fn()
+
+        return interval
+
+    def run(self, *, max_cycles: int | None = None) -> int:
+        """Run polling cycles until max_cycles is reached or stop is signaled."""
+        if max_cycles is not None and max_cycles < 0:
+            raise ValueError("max_cycles must be >= 0")
+
+        cycles_completed = 0
+        consecutive_idle_cycles = 0
+
+        while True:
+            if self._should_stop():
+                return cycles_completed
+            if max_cycles is not None and cycles_completed >= max_cycles:
+                return cycles_completed
+
+            now = self.now_fn() if self.now_fn is not None else None
+            submitted = self.service.run_once(now=now)
+            cycles_completed += 1
+
+            if submitted:
+                consecutive_idle_cycles = 0
+            else:
+                consecutive_idle_cycles += 1
+
+            if self._should_stop():
+                return cycles_completed
+            if max_cycles is not None and cycles_completed >= max_cycles:
+                return cycles_completed
+
+            sleep_seconds = self._compute_interval_seconds(
+                consecutive_idle_cycles=consecutive_idle_cycles
+            )
+            self.sleep_fn(sleep_seconds)

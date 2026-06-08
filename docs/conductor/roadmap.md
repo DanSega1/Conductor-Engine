@@ -158,12 +158,12 @@ The platform enforces its own rules and recovers without a human present.
 - **Slice 4 — Schedules and trigger adapters (initial)** — Added scheduler contracts (`TriggerDispatch`, `ExternalTriggerAdapter`) and runtime adapters for cron and webhook ingestion (`CronTriggerAdapter`, `WebhookTriggerAdapter`) with deterministic poll semantics.
 - **Slice 5 — Trigger scheduler service (initial)** — Added `TriggerSchedulerService` to poll adapters and submit mapped dispatches through the supervisor path (`submit()` sink), including trigger provenance metadata enrichment and health/runtime issue aggregation.
 - **Slice 6 — Webhook ingress boundary (initial)** — Added `WebhookIngressService` as a transport-facing seam that routes decoded webhook payloads to named webhook adapters, with end-to-end coverage from ingress to scheduler submission.
+- **Slice 7 — Scheduler lifecycle controls (initial)** — Added `TriggerSchedulerLoopRunner` around `TriggerSchedulerService.run_once()` with base polling interval, exponential idle backoff, interval reset after submitted work, optional jitter, deterministic hook injection for tests (`sleep_fn`, `random_fn`), max-cycle bounded runs, and graceful stop-signal shutdown.
 
 ### Planned
 
 - **Human-in-the-loop as a mode, not a requirement** — tasks, direction, and approvals can come from humans or from upstream systems. The engine does not stall waiting for human input unless explicitly configured to.
-- **Schedules and external triggers** — cron, webhooks, CI jobs, and other upstream systems submit work through the same control plane instead of bypassing the supervisor.
-- **Schedules and external triggers** — cron/webhook adapter seams and minimal ingress are now in core; remaining work is production HTTP bindings, CI/event-source integrations, lifecycle controls (poll loops, backoff), and production hardening.
+- **Schedules and external triggers** — cron/webhook adapter seams, ingress, and initial lifecycle controls are now in core; remaining work is production HTTP bindings, CI/event-source integrations, and production hardening.
 - **Behavioral retry and recovery** — failure is not just retried mechanically. The platform logs failure context, adjusts subsequent attempts, and escalates after threshold breaches.
 - **Self-enforcing guardrails** — OPA integration at the supervisor level. Policies are evaluated before capability execution, not just at input validation. Deny decisions produce structured audit records. ✅ Done in Slice 3.
 - **Sandboxed execution** — capability execution runs in isolated contexts; filesystem and network capabilities are constrained by policy, not just by code.
