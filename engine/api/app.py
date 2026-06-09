@@ -50,7 +50,7 @@ from fastapi.responses import JSONResponse
 from engine.api.bus import SSEEventBus
 from engine.api.cluster import routes as cluster_routes
 from engine.api.cluster.registry import EngineRegistry
-from engine.api.routes import capabilities, events, health, tasks, workflows
+from engine.api.routes import capabilities, events, health, tasks, triggers, workflows
 from engine.registry.capabilities import CapabilityRegistry
 from engine.runtime.store import TaskStore
 from engine.supervisor.service import TaskSupervisor
@@ -98,6 +98,7 @@ def create_api_app(
     event_bus: SSEEventBus | None = None,
     orchestrator: Any | None = None,
     cluster_registry: EngineRegistry | None = None,
+    trigger_service: Any | None = None,
     title: str = "Conductor Engine",
     version: str = "v1",
     cors_origins: list[str] | None = None,
@@ -121,6 +122,10 @@ def create_api_app(
     cluster_registry:
         Optional ``EngineRegistry`` for multi-engine fleet management.
         Defaults to a new in-memory registry (always present; nodes register at runtime).
+    trigger_service:
+        Optional ``WebhookIngressService``.  When provided, ``POST /v1/triggers/{name}``
+        accepts webhook payloads and ``GET /v1/triggers`` lists adapters.
+        When None, both endpoints return 503.
     title:
         API title shown in OpenAPI docs.
     version:
@@ -160,6 +165,7 @@ def create_api_app(
     app.state.event_bus = event_bus
     app.state.orchestrator = orchestrator
     app.state.cluster_registry = cluster_registry or EngineRegistry()
+    app.state.trigger_service = trigger_service
 
     # ------------------------------------------------------------------
     # CORS
@@ -201,6 +207,7 @@ def create_api_app(
     app.include_router(capabilities.router, prefix="/v1")
     app.include_router(health.router, prefix="/v1")
     app.include_router(events.router, prefix="/v1")
+    app.include_router(triggers.router, prefix="/v1")
     app.include_router(cluster_routes.router, prefix="/v1")
 
     # ------------------------------------------------------------------

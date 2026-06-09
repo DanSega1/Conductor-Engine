@@ -78,6 +78,11 @@ def get_cluster_registry(request: Request):
     return request.app.state.cluster_registry
 
 
+def get_trigger_service(request: Request):
+    """Return the WebhookIngressService, or None if not configured."""
+    return getattr(request.app.state, "trigger_service", None)
+
+
 # ---------------------------------------------------------------------------
 # Auth hook (Phase 7 placeholder)
 # ---------------------------------------------------------------------------
