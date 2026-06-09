@@ -104,45 +104,27 @@ Stability, observability, and deployment-readiness.
 
 ---
 
-## Phase 4 — Control Plane + TUI (WIP)
+## Phase 4 — Control Plane + TUI (complete)
 
-Currently in progress. A standalone operator surface for monitoring and operating a running Conductor instance.
+A versioned HTTP control-plane API that `condor-tui`, wrapper services, and future web UIs consume without coupling to internal Python objects.
 
-### Current State
+### Done
 
-- `DanSega1/condor-tui` already exists and proves the operator experience and tab model
-- Phase 4 is aligning the TUI as a first-class consumer of stable, versioned engine control-plane contracts instead of local storage conventions
-- Removing direct dependency on implementation details; stabilizing read models, control actions, and event schema
+- **`engine/api/`** — full FastAPI control-plane API, optional `[api]` install extra
+- **Versioned read models** — `ControlPlaneTaskV1`, `ControlPlaneWorkflowTraceV1`, `ControlPlaneCapabilityV1`, `ControlPlaneSnapshotV1`, `ControlPlaneEventV1` (all in `engine/control_plane/contracts.py`)
+- **Task routes** — `GET/POST /v1/tasks`, `/v1/tasks/run`, `/{id}/run`, `/{id}/approve`, `/{id}/cancel`
+- **Capability routes** — `GET /v1/capabilities`, `GET /v1/capabilities/{name}`
+- **Workflow routes** — `POST /v1/workflows`, `GET /v1/workflows/{workflow_id}`
+- **Observability routes** — `GET /v1/health` (503 on issues), `GET /v1/snapshot`
+- **SSE event stream** — `GET /v1/events` with type-filter query param; `SSEEventBus` bridges sync supervisor threads to async SSE clients via `loop.call_soon_threadsafe`
+- **Multi-engine cluster** — `GET/POST /v1/engines`, heartbeat, deregister, tag-based auto-routing at `POST /v1/engines/tasks/run`; proxy health and snapshot to remote nodes via httpx
+- **Auth placeholder** — `AuthContext` + `get_auth_context` dependency in `engine/api/dependencies.py`; Phase 7 replaces the implementation without touching route handlers
+- **`cond serve`** — CLI subcommand wires the full engine stack and launches uvicorn
+- **OpenAPI docs** — auto-generated at `/docs` and `/redoc` from existing Pydantic v2 models
+- **`Dockerfile` + `.dockerignore`** — `python:3.14-slim`, verified on `linux/arm64`; `cond serve` as entrypoint
+- **31-test API suite** — `tests/engine/test_api.py` covering all route groups via `TestClient`
 
-**Goal:** define the versioned control-plane contracts that both `cond` and `condor-tui` consume, so the UI and engine support each other without sharing process internals or scraping implementation details.
-
-**Stack:** Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea) for the TUI; HTTP/JSON + structured events on the engine side.
-
-Scope (tentative):
-- Stable read models for tasks, workflows, capabilities, approvals, audit trail, and health
-- Control actions for submit, approve, cancel, retry, and workflow start
-- Event stream + snapshot feed for live views; local file polling remains a bootstrap compatibility mode
-- Live task queue and status board
-- Workflow execution trace (step-by-step result view)
-- Capability registry browser
-- Log tail with filtering
-- Thin Go/Python client SDKs over the same contracts for local tools, CI jobs, and remote automation
-
-`DanSega1/condor-tui` already proves the operator experience and tab model. Phase 4 turns that reference client into a first-class consumer of stable engine contracts instead of local storage conventions.
-
-**Missing prerequisites identified from Phases 1–3:**
-- A versioned API boundary for task queries, workflow traces, approvals, and audit data
-- A stable event schema that UIs and addons can subscribe to without coupling to internal Python objects
-- Addon metadata and health discovery so tools can surface memory/MCP/plugin capabilities cleanly
-- Command boundaries for approval/cancel/retry before Phase 7 hardens remote access and multi-tenant policy
-- Shared client contracts so the CLI, TUI, CI jobs, and remote wrappers use the same surface area
-
-**Why a separate binary:**
-- Conductor Engine is a Python library and CLI tool — the TUI has no reason to share the runtime process
-- Go compiles to a single static binary with no interpreter dependency, making it easy to distribute alongside the Python package
-- Bubble Tea is purpose-built for this kind of interactive terminal work
-
-**Target:** After Phase 3. This closes the current roadmap gap where the TUI already expects an API/event model but the API was previously named only in Phase 7.
+**`condor-tui`** (`DanSega1/condor-tui`) consumes the API over HTTP — polls `/v1/snapshot`, subscribes to `/v1/events`, and drives control actions through the task endpoints.
 
 ---
 
@@ -160,14 +142,30 @@ The platform enforces its own rules and recovers without a human present.
 - **Slice 6 — Webhook ingress boundary (initial)** — Added `WebhookIngressService` as a transport-facing seam that routes decoded webhook payloads to named webhook adapters, with end-to-end coverage from ingress to scheduler submission.
 - **Slice 7 — Scheduler lifecycle controls (initial)** — Added `TriggerSchedulerLoopRunner` around `TriggerSchedulerService.run_once()` with base polling interval, exponential idle backoff, interval reset after submitted work, optional jitter, deterministic hook injection for tests (`sleep_fn`, `random_fn`), max-cycle bounded runs, and graceful stop-signal shutdown.
 
+### Next — Slice 8: Behavioral retry strategies
+
+The supervisor already handles `delay_seconds` and `adjusted_input` from `RetryDecision` (wired in Slice 1). `DefaultRetryStrategy` is purely mechanical. Slice 8 adds concrete retry strategies that use both fields:
+
+- **`ExponentialBackoffRetryStrategy`** — emits `delay_seconds` with configurable `base_delay`, `multiplier`, and `max_delay`; optionally escalates when exhausted.
+- **`JitteredBackoffRetryStrategy`** — adds randomised jitter to prevent thundering-herd retry storms.
+- **`InputAdjustingRetryStrategy`** (protocol extension) — demonstrates the `adjusted_input` path with a caller-supplied `adjuster: Callable[[FailureContext], dict]`.
+- All three implement `RetryStrategy` Protocol; no supervisor changes required.
+
+### Next — Slice 9: Production HTTP bindings for webhook ingress
+
+`WebhookIngressService.ingest()` is transport-agnostic. Slice 9 connects it to the HTTP API:
+
+- `POST /v1/triggers/{trigger_name}` route in `engine/api/routes/triggers.py` — accepts raw JSON body, calls `WebhookIngressService.ingest()`, returns 202.
+- `GET /v1/triggers` — lists registered adapters and their health status.
+- `TriggerSchedulerService` registered on the FastAPI app via `app.state` (same pattern as supervisor/registry).
+- Integration test: POST a payload, advance scheduler one cycle, assert task appears in store.
+
 ### Planned
 
 - **Human-in-the-loop as a mode, not a requirement** — tasks, direction, and approvals can come from humans or from upstream systems. The engine does not stall waiting for human input unless explicitly configured to.
-- **Schedules and external triggers** — cron/webhook adapter seams, ingress, and initial lifecycle controls are now in core; remaining work is production HTTP bindings, CI/event-source integrations, and production hardening.
-- **Behavioral retry and recovery** — failure is not just retried mechanically. The platform logs failure context, adjusts subsequent attempts, and escalates after threshold breaches.
-- **Self-enforcing guardrails** — OPA integration at the supervisor level. Policies are evaluated before capability execution, not just at input validation. Deny decisions produce structured audit records. ✅ Done in Slice 3.
 - **Sandboxed execution** — capability execution runs in isolated contexts; filesystem and network capabilities are constrained by policy, not just by code.
-- **Audit trail** — every task decision (allow, deny, retry, escalate) is recorded with enough context to reconstruct what happened and why.
+- **Audit trail completeness** — every task decision (allow, deny, retry, escalate) recorded with full context.
+- **Integration test suite** — end-to-end operator and wrapper flows against control-plane contracts; webhook-triggered submissions through scheduler ingress; regression fixtures for CLI and TUI consumers.
 
 ---
 
