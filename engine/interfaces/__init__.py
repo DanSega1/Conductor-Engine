@@ -11,6 +11,7 @@ from engine.interfaces.capability import (
 from engine.interfaces.event import EventBus, EventType, TaskEvent
 from engine.interfaces.memory import MemoryDocument, MemoryHit, MemoryProvider, MemoryQuery
 from engine.interfaces.policy import PolicyContext, PolicyDecision, PolicyDecisionType, PolicyEngine
+from engine.interfaces.scheduler import ExternalTriggerAdapter, TriggerDispatch, TriggerSource
 from engine.interfaces.task import (
     AuditEntry,
     RiskLevel,
@@ -48,6 +49,7 @@ __all__ = [
     "CapabilityResult",
     "EventBus",
     "EventType",
+    "ExternalTriggerAdapter",
     "MemoryDocument",
     "MemoryHit",
     "MemoryProvider",
@@ -66,6 +68,8 @@ __all__ = [
     "TaskResult",
     "TaskStatus",
     "TaskSubmission",
+    "TriggerDispatch",
+    "TriggerSource",
     "ValidationResponse",
     "ValidatorContext",
     "ValidatorInterface",

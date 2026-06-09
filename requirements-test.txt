@@ -7,3 +7,6 @@ pydantic>=2.0
 pydantic-settings>=2.0
 pre-commit>=3.7
 ruff>=0.11,<0.12
+# API test dependencies — mirrors the [api] optional extra
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1

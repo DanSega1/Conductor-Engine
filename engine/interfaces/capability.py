@@ -17,6 +17,14 @@ class CapabilityDescriptor(BaseModel):
     description: str
     risk_level: RiskLevel = RiskLevel.LOW
     tags: list[str] = Field(default_factory=list)
+    require_approval: bool = Field(
+        default=False,
+        description=(
+            "When True, every task using this capability is automatically routed to "
+            "AWAITING_APPROVAL before execution, regardless of the policy engine decision. "
+            "This is evaluated in the supervisor before the policy engine is consulted."
+        ),
+    )
 
 
 class CapabilityContext(BaseModel):

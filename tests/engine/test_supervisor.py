@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import time
+from typing import Any
 
 from pydantic import BaseModel
 import pytest
@@ -110,11 +111,48 @@ def test_supervisor_writes_audit_trail_and_workflow_id(tmp_path: Path) -> None:
     )
 
     assert task.workflow_id == "wf-123"
-    assert [entry.action for entry in task.audit_trail] == ["submitted", "started", "completed"]
+    assert [entry.action for entry in task.audit_trail] == [
+        "submitted",
+        "allowed",
+        "started",
+        "completed",
+    ]
     assert task.audit_trail[1].from_status == TaskStatus.PENDING
-    assert task.audit_trail[1].to_status == TaskStatus.RUNNING
-    assert task.audit_trail[2].from_status == TaskStatus.RUNNING
-    assert task.audit_trail[2].to_status == TaskStatus.COMPLETED
+    assert task.audit_trail[1].to_status == TaskStatus.PENDING
+    assert task.audit_trail[2].from_status == TaskStatus.PENDING
+    assert task.audit_trail[2].to_status == TaskStatus.RUNNING
+    assert task.audit_trail[3].from_status == TaskStatus.RUNNING
+    assert task.audit_trail[3].to_status == TaskStatus.COMPLETED
+
+
+def test_supervisor_records_policy_allow_in_audit_trail(tmp_path: Path) -> None:
+    class AllowPolicy:
+        def evaluate(self, task, context) -> PolicyDecision:
+            return PolicyDecision(
+                decision=PolicyDecisionType.ALLOW,
+                reason="approved by policy",
+                metadata={"policy": "allow-all"},
+            )
+
+    registry = CapabilityRegistry()
+    registry.register(EchoCapability())
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+        policy_engine=AllowPolicy(),
+    )
+
+    task = supervisor.run_submission(
+        TaskSubmission(name="Echo hello", capability="echo", input={"message": "hello"})
+    )
+
+    allowed_entries = [entry for entry in task.audit_trail if entry.action == "allowed"]
+    assert len(allowed_entries) == 1
+    assert allowed_entries[0].from_status == TaskStatus.PENDING
+    assert allowed_entries[0].to_status == TaskStatus.PENDING
+    assert allowed_entries[0].metadata["policy"] == "allow-all"
+    assert allowed_entries[0].metadata["reason"] == "approved by policy"
 
 
 def test_supervisor_persists_policy_denied_tasks_with_audit_and_event(tmp_path: Path) -> None:
@@ -264,7 +302,8 @@ def test_supervisor_fails_task_when_capability_soft_timeout_is_exceeded(tmp_path
                 risk_level=RiskLevel.LOW,
             )
 
-        def execute(self, payload: SlowInput, context) -> CapabilityResult:
+        def execute(self, payload: BaseModel | dict[str, Any], context) -> CapabilityResult:
+            assert isinstance(payload, SlowInput)
             time.sleep(payload.duration)
             return CapabilityResult(output={"slept": payload.duration})
 
@@ -298,7 +337,7 @@ def test_supervisor_enforces_per_capability_min_interval(tmp_path: Path) -> None
                 risk_level=RiskLevel.LOW,
             )
 
-        def execute(self, payload: dict, context) -> CapabilityResult:
+        def execute(self, payload: BaseModel | dict[str, Any], context) -> CapabilityResult:
             self.calls.append(time.monotonic())
             return CapabilityResult(output={"calls": len(self.calls)})
 
@@ -333,7 +372,7 @@ def test_supervisor_records_failure_context_in_audit_trail(tmp_path: Path) -> No
                 risk_level=RiskLevel.LOW,
             )
 
-        def execute(self, payload: dict, context) -> CapabilityResult:
+        def execute(self, payload: BaseModel | dict[str, Any], context) -> CapabilityResult:
             self.call_count += 1
             raise ValueError("Intentional failure")
 
@@ -394,7 +433,7 @@ def test_supervisor_uses_custom_retry_strategy(tmp_path: Path) -> None:
                 risk_level=RiskLevel.LOW,
             )
 
-        def execute(self, payload: dict, context) -> CapabilityResult:
+        def execute(self, payload: BaseModel | dict[str, Any], context) -> CapabilityResult:
             self.call_count += 1
             raise ValueError("Intentional failure")
 
@@ -433,7 +472,7 @@ def test_supervisor_escalates_when_retry_strategy_requests_it(tmp_path: Path) ->
                 risk_level=RiskLevel.LOW,
             )
 
-        def execute(self, payload: dict, context) -> CapabilityResult:
+        def execute(self, payload: BaseModel | dict[str, Any], context) -> CapabilityResult:
             raise ValueError("Intentional failure")
 
     registry = CapabilityRegistry()
@@ -477,7 +516,7 @@ def test_supervisor_emits_escalated_event(tmp_path: Path) -> None:
                 risk_level=RiskLevel.LOW,
             )
 
-        def execute(self, payload: dict, context) -> CapabilityResult:
+        def execute(self, payload: BaseModel | dict[str, Any], context) -> CapabilityResult:
             raise ValueError("Intentional failure")
 
     class CapturingEventBus:
@@ -529,7 +568,7 @@ def test_supervisor_default_retry_behavior_unchanged(tmp_path: Path) -> None:
                 risk_level=RiskLevel.LOW,
             )
 
-        def execute(self, payload: dict, context) -> CapabilityResult:
+        def execute(self, payload: BaseModel | dict[str, Any], context) -> CapabilityResult:
             self.call_count += 1
             if self.call_count < 3:
                 raise ValueError(f"Failure {self.call_count}")

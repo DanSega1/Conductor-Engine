@@ -104,44 +104,49 @@ Stability, observability, and deployment-readiness.
 
 ---
 
-## Phase 4 — TUI (future)
+## Phase 4 — Control Plane + TUI (complete)
 
-A standalone terminal UI for monitoring and operating a running Conductor instance.
+A versioned HTTP control-plane API that `condor-tui`, wrapper services, and future web UIs consume without coupling to internal Python objects.
 
-**Stack:** Go + [Bubble Tea](https://github.com/charmbracelet/bubbletea)
+### Done
 
-Scope (tentative):
-- Live task queue and status board
-- Workflow execution trace (step-by-step result view)
-- Capability registry browser
-- Log tail with filtering
+- **`engine/api/`** — full FastAPI control-plane API, optional `[api]` install extra
+- **Versioned read models** — `ControlPlaneTaskV1`, `ControlPlaneWorkflowTraceV1`, `ControlPlaneCapabilityV1`, `ControlPlaneSnapshotV1`, `ControlPlaneEventV1` (all in `engine/control_plane/contracts.py`)
+- **Task routes** — `GET/POST /v1/tasks`, `/v1/tasks/run`, `/{id}/run`, `/{id}/approve`, `/{id}/cancel`
+- **Capability routes** — `GET /v1/capabilities`, `GET /v1/capabilities/{name}`
+- **Workflow routes** — `POST /v1/workflows`, `GET /v1/workflows/{workflow_id}`
+- **Observability routes** — `GET /v1/health` (503 on issues), `GET /v1/snapshot`
+- **SSE event stream** — `GET /v1/events` with type-filter query param; `SSEEventBus` bridges sync supervisor threads to async SSE clients via `loop.call_soon_threadsafe`
+- **Multi-engine cluster** — `GET/POST /v1/engines`, heartbeat, deregister, tag-based auto-routing at `POST /v1/engines/tasks/run`; proxy health and snapshot to remote nodes via httpx
+- **Auth placeholder** — `AuthContext` + `get_auth_context` dependency in `engine/api/dependencies.py`; Phase 7 replaces the implementation without touching route handlers
+- **`cond serve`** — CLI subcommand wires the full engine stack and launches uvicorn
+- **OpenAPI docs** — auto-generated at `/docs` and `/redoc` from existing Pydantic v2 models
+- **`Dockerfile` + `.dockerignore`** — `python:3.14-slim`, verified on `linux/arm64`; `cond serve` as entrypoint
+- **31-test API suite** — `tests/engine/test_api.py` covering all route groups via `TestClient`
 
-**Why a separate binary:**
-- Conductor Engine is a Python library and CLI tool — the TUI has no reason to share the runtime process
-- Go compiles to a single static binary with no interpreter dependency, making it easy to distribute alongside the Python package
-- Bubble Tea is purpose-built for this kind of interactive terminal work
-
-**Target:** After Phase 3 — when the HTTP API and stable event model exist to feed the UI without polling hacks.
+**`condor-tui`** (`DanSega1/condor-tui`) consumes the API over HTTP — polls `/v1/snapshot`, subscribes to `/v1/events`, and drives control actions through the task endpoints.
 
 ---
 
-## Phase 5 — Autonomous Operation
+## Phase 5 — Autonomous Operation (complete)
 
 The platform enforces its own rules and recovers without a human present.
 
 ### Done
 
-- **Slice 1 — Failure contracts and escalation wiring** — `FailureContext`, `RetryStrategy`, `DefaultRetryStrategy` (with `enable_escalation`), `TaskStatus.ESCALATED`, `EventType.TASK_ESCALATED`, and full supervisor wiring. All transitions persist to the store and emit structured events.
-- **Slice 2 — Escalation threshold and CLI visibility** — `escalation_threshold` on `DefaultRetryStrategy` (escalate only when `attempt >= threshold`; `None` escalates on any exhaustion). ESCALATED tasks appear in `cond task list` with ⚠ bold-yellow marker and are selectable via `--status escalated`. Design-integrity invariant added.
-- **Slice 3 — OPA policy integration** — `OPAInput` standard bundle (task + capability + workdir serialised for Rego), `OPAPolicyEngine` (httpx HTTP client to OPA REST `/v1/data/{path}`; `fail_open`/`fail_closed` modes; `health_check()`), `RiskLevelPolicyEngine` (built-in rule-based engine; `deny_above`, `require_approval_at`, `allowed_capabilities` allowlist — works without OPA server). Both plug into the existing `PolicyEngine` Protocol without touching the supervisor.
-
-### Planned
-
-- **Human-in-the-loop as a mode, not a requirement** — tasks, direction, and approvals can come from humans or from upstream systems. The engine does not stall waiting for human input unless explicitly configured to.
-- **Behavioral retry and recovery** — failure is not just retried mechanically. The platform logs failure context, adjusts subsequent attempts, and escalates after threshold breaches.
-- **Self-enforcing guardrails** — OPA integration at the supervisor level. Policies are evaluated before capability execution, not just at input validation. Deny decisions produce structured audit records. ✅ Done in Slice 3.
-- **Sandboxed execution** — capability execution runs in isolated contexts; filesystem and network capabilities are constrained by policy, not just by code.
-- **Audit trail** — every task decision (allow, deny, retry, escalate) is recorded with enough context to reconstruct what happened and why.
+- **Slice 1 — Failure contracts and escalation wiring** — `FailureContext`, `RetryStrategy`, `DefaultRetryStrategy` (with `enable_escalation`), `TaskStatus.ESCALATED`, `EventType.TASK_ESCALATED`, and full supervisor wiring.
+- **Slice 2 — Escalation threshold and CLI visibility** — `escalation_threshold` on `DefaultRetryStrategy`. ESCALATED tasks appear in `cond task list` with ⚠ bold-yellow marker.
+- **Slice 3 — OPA policy integration** — `OPAPolicyEngine`, `RiskLevelPolicyEngine`. Both plug into the existing `PolicyEngine` Protocol without touching the supervisor.
+- **Slice 4 — Cron/webhook trigger adapters** — `CronTriggerAdapter`, `WebhookTriggerAdapter` with deterministic poll semantics.
+- **Slice 5 — Trigger scheduler service** — `TriggerSchedulerService` polls adapters and submits dispatches through the supervisor path.
+- **Slice 6 — Webhook ingress boundary** — `WebhookIngressService` routes decoded webhook payloads to named adapters.
+- **Slice 7 — Scheduler lifecycle controls** — `TriggerSchedulerLoopRunner` with exponential idle backoff, jitter, max-cycle bounds, and graceful stop-signal shutdown.
+- **Slice 8 — Behavioral retry strategies** — `ExponentialBackoffRetryStrategy`, `JitteredBackoffRetryStrategy`, `InputAdjustingRetryStrategy`. All implement `RetryStrategy` Protocol; supervisor already handles `delay_seconds` and `adjusted_input`.
+- **Slice 9 — Production HTTP bindings for webhook ingress** — `POST /v1/triggers/{name}`, `GET /v1/triggers`; `trigger_service` param on `create_api_app`.
+- **Slice 10 — Human-in-the-loop as a configured mode** — `require_approval: bool` on `CapabilityDescriptor`; supervisor gates every task using that capability at `AWAITING_APPROVAL` before the policy engine is consulted. Declarable in YAML capability config via `require_approval: true`.
+- **Slice 11 — Sandboxed subprocess execution** — `SubprocessCapabilityRunner` and `_sandbox_worker` module execute capabilities in isolated child processes with hard wall-clock timeout, no shared state, and clean resource reclamation. Opt-in; existing in-process path unchanged.
+- **Slice 12 — Richer audit trail for policy decisions** — every `_apply_policy` call now stamps `policy_engine` (class name) and `decision_type` into the audit entry metadata, regardless of allow/deny/require_approval outcome.
+- **Slice 13 — Integration test suite** — `tests/integration/test_control_plane_integration.py`; 17 tests across: control-plane schema stability, require_approval gate, webhook→scheduler→store end-to-end, policy deny audit trail, retry with backoff, sandboxed subprocess execution.
 
 ---
 
@@ -163,16 +168,29 @@ The "guild" is a cross-project knowledge layer — a structured way for agent ro
 
 Conductor running on a VPS, cloud instance, or remote machine — protected, efficient, and auditable.
 
-- **Remote-first HTTP API** — the supervisor exposes a stable REST API. The CLI becomes a thin client over it. Local and remote operation are identical from the caller's perspective.
+- **Protected control plane** — harden the Phase 4 API with authn/authz, secret handling, transport security, and operational defaults fit for remote use.
 - **Authentication and authorization** — API calls require auth. OPA policies govern what callers can submit (which capabilities, which inputs, under what conditions).
 - **Multi-tenant isolation** — separate capability registries, task stores, and guardrail policies per tenant.
 - **Efficient resource management** — capability concurrency limits, queue depth controls, backpressure when the system is under load.
+- **Remote runners and CI targets** — remote machines, CI pipelines, and protected workers register as execution targets without bypassing supervisor, policy, or audit boundaries.
 - **Deployment targets** — single binary (via a thin Go wrapper or containerized Python), `systemd` unit, Docker image, Kubernetes operator pattern.
 - **Protected by default** — no capability executes without a policy allow decision. Default-deny with explicit permit grants.
 
 This is the "OpenClaw-style but more protected and efficient" target — a hardened, remotely-operated orchestration platform with policy enforcement and a learning layer.
 
 ---
+
+## Platform layering (decided)
+
+The engine should stay versatile by keeping reusable platform concerns low in the stack and product-specific concerns above it.
+
+- **Core engine** — supervisor lifecycle, workflow orchestration, policy, storage contracts, event model, control-plane API, and addon seams
+- **Addon layer** — reusable extensions such as memory providers, MCP bridges, schedulers/cron triggers, SDK clients, and remote runner adapters
+- **Product layer** — `condor-tui`, a future web UI, SDLC/CI wrappers, and domain-specific orchestration systems built on the core contracts
+
+Rule of thumb:
+- If the feature changes execution semantics or adds reusable infrastructure, put it in the engine or addon layer.
+- If the feature is presentation, domain opinion, or product workflow, keep it in a wrapper project above the engine.
 
 ## Out of scope (explicitly)
 
@@ -184,13 +202,23 @@ These belong in programs built *on top of* Conductor, not inside it:
 | Distributed task queues (Redis, Celery) | Infrastructure — compose it in, don't embed it |
 | Persistent workflow state across restarts | Downstream storage concern until Phase 3 defines the store interface |
 | Copilot / agent framework | Conductor is the substrate; agents are consumers |
-| UI beyond the TUI | Web dashboard is an integration, not a platform primitive |
+| Product-specific UI beyond the reference clients | A web dashboard or vertical wrapper can be built on top of the control plane, but it is not a platform primitive |
 
 ---
 
 ## Backlog — Engineering & Developer Experience
 
 Cross-cutting tasks not tied to a specific phase. Prioritised roughly — address before / during Phase 3.
+
+### Integration tests that mimic user/wrapper/TUI activity
+
+Status: planned (Phase 5 follow-up)
+
+Add an integration suite that validates end-to-end operator and wrapper flows against control-plane contracts:
+- Simulate user-like activity through CLI and wrapper-style task submissions, then assert task status progression, audit visibility, and approval transitions.
+- Simulate TUI-style read patterns (list/watch/trace) against versioned contracts to verify schema stability as Phase 4 and Phase 5 evolve.
+- Cover webhook-triggered submissions through scheduler ingress to supervisor submit path and assert trigger metadata provenance in stored task records.
+- Add regression fixtures to ensure external consumers (CLI wrappers and TUI clients) do not break when runtime internals change.
 
 ### ⚠️ Time-sensitive: GitHub Actions — Node.js 24 migration (deadline: June 2, 2026)
 
