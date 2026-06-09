@@ -15,20 +15,17 @@ and HTTP API — without mocking internal components.  They validate:
 
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
+import pytest
 
 from engine.api import SSEEventBus, create_api_app
 from engine.capabilities.echo import EchoCapability
 from engine.interfaces.capability import CapabilityContext, CapabilityDescriptor
-from engine.interfaces.policy import PolicyContext, PolicyDecision, PolicyDecisionType
+from engine.interfaces.policy import PolicyDecision, PolicyDecisionType
 from engine.interfaces.task import RiskLevel, TaskSubmission
 from engine.registry.capabilities import CapabilityRegistry
 from engine.runtime.store import MemoryTaskStore
 from engine.supervisor.service import TaskSupervisor
-from engine.workflow.agents import LinearPlanner, PassthroughValidator, PassthroughWorker
-from engine.workflow.orchestrator import WorkflowOrchestrator
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -204,7 +201,11 @@ class TestWebhookIngressIntegration:
 
     @pytest.fixture()
     def webhook_setup(self, supervisor: TaskSupervisor, registry: CapabilityRegistry, store: MemoryTaskStore, event_bus: SSEEventBus):
-        from engine.runtime.scheduler import TriggerSchedulerService, WebhookIngressService, WebhookTriggerAdapter
+        from engine.runtime.scheduler import (
+            TriggerSchedulerService,
+            WebhookIngressService,
+            WebhookTriggerAdapter,
+        )
 
         adapter = WebhookTriggerAdapter(
             name="integration-hook",
@@ -324,7 +325,10 @@ class TestRetryWithBackoff:
     @pytest.fixture()
     def failing_capability(self) -> type:
         from engine.capabilities.echo import EchoCapability
-        from engine.interfaces.capability import CapabilityContext, CapabilityDescriptor, CapabilityResult
+        from engine.interfaces.capability import (
+            CapabilityDescriptor,
+            CapabilityResult,
+        )
 
         class FailOnce(EchoCapability):
             _attempts = 0
@@ -382,6 +386,7 @@ class TestSubprocessSandbox:
 
     def test_subprocess_timeout_raises(self) -> None:
         import pytest
+
         from engine.interfaces.capability import CapabilityContext
         from engine.runtime.sandbox import SubprocessCapabilityError, SubprocessCapabilityRunner
 
@@ -398,6 +403,7 @@ class TestSubprocessSandbox:
 
     def test_unknown_capability_raises(self) -> None:
         import pytest
+
         from engine.interfaces.capability import CapabilityContext
         from engine.runtime.sandbox import SubprocessCapabilityError, SubprocessCapabilityRunner
 

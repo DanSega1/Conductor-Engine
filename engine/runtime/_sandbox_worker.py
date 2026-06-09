@@ -30,10 +30,10 @@ Security notes
 
 from __future__ import annotations
 
+from importlib import import_module
 import json
 import sys
 import traceback
-from importlib import import_module
 
 
 def _main() -> None:
