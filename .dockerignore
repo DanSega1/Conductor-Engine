@@ -1,0 +1,10 @@
+.venv/
+.git/
+.github/
+tests/
+docs/assets/
+docs/conductor/
+examples/
+.squad/
+*.md
+!README.md
