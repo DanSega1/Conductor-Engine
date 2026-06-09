@@ -57,7 +57,11 @@ def load_capabilities_from_file(
         controls = None
         if "execution" in entry:
             controls = CapabilityExecutionControls.model_validate(entry["execution"])
-        registry.register(capability_class(**config), execution_controls=controls)
+        cap_instance = capability_class(**config)
+        # Allow YAML to set require_approval on the descriptor at load time
+        if entry.get("require_approval"):
+            cap_instance.descriptor.require_approval = True  # type: ignore[misc]
+        registry.register(cap_instance, execution_controls=controls)
 
     for capability_name, controls in data.get("execution_controls", {}).items():
         registry.set_execution_controls(

@@ -226,6 +226,9 @@ class TaskSupervisor:
         policy_metadata = dict(decision.metadata)
         if decision.reason is not None:
             policy_metadata.setdefault("reason", decision.reason)
+        # Always record which policy engine evaluated the task and what it decided.
+        policy_metadata["policy_engine"] = type(self._policy).__name__
+        policy_metadata["decision_type"] = decision.decision.value
 
         if decision.decision == PolicyDecisionType.DENY:
             denied_at = _now()
@@ -335,6 +338,17 @@ class TaskSupervisor:
         capability = validate_task_submission(submission, self.registry)
 
         if task.status == TaskStatus.PENDING:
+            # Capability-level require_approval gate — checked before policy engine.
+            if capability.descriptor.require_approval:
+                return self._transition_status(
+                    task,
+                    to_status=TaskStatus.AWAITING_APPROVAL,
+                    actor="supervisor",
+                    action="awaiting_approval",
+                    event_type=EventType.TASK_AWAITING_APPROVAL,
+                    metadata={"reason": "capability requires approval", "capability": task.capability},
+                )
+
             decision = self._policy.evaluate(
                 task.model_copy(deep=True),
                 PolicyContext(capability=capability.descriptor, workdir=self.workdir),
