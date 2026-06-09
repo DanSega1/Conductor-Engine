@@ -11,6 +11,11 @@ Test layout
 - TestHealthRoutes     — GET /health and /snapshot
 - TestWorkflowRoutes   — POST /workflows and GET trace
 - TestEventRoute       — GET /events (SSE subscription)
+- TestTriggerRoutes    — POST/GET /triggers (webhook ingress)
+- TestClusterRoutes    — engine registration, heartbeat, deregister
+- TestHealthRoutes     — GET /health and /snapshot
+- TestWorkflowRoutes   — POST /workflows and GET trace
+- TestEventRoute       — GET /events (SSE subscription)
 - TestClusterRoutes    — engine registration, heartbeat, deregister
 """
 
@@ -308,6 +313,104 @@ class TestEventRoute:
         """Verify the /v1/events endpoint appears in the OpenAPI schema."""
         schema = client.get("/openapi.json").json()
         assert "/v1/events" in schema["paths"]
+
+
+# ---------------------------------------------------------------------------
+# Trigger routes
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def trigger_client(
+    supervisor: TaskSupervisor,
+    registry: CapabilityRegistry,
+    event_bus: SSEEventBus,
+) -> TestClient:
+    """Client with a live WebhookIngressService wired in."""
+    from engine.interfaces.task import TaskSubmission
+    from engine.runtime.scheduler import WebhookIngressService, WebhookTriggerAdapter
+
+    adapter = WebhookTriggerAdapter(
+        name="test-hook",
+        mapper=lambda p: TaskSubmission(
+            name="webhook-task",
+            capability="echo",
+            input={"message": p.get("msg", "triggered")},
+        ),
+    )
+    ingress = WebhookIngressService(adapters=[adapter])
+
+    store = supervisor.store
+    app = create_api_app(
+        supervisor=supervisor,
+        registry=registry,
+        store=store,
+        event_bus=event_bus,
+        trigger_service=ingress,
+    )
+    return TestClient(app, raise_server_exceptions=True)
+
+
+class TestTriggerRoutes:
+    def test_list_triggers_returns_503_without_service(self, client_no_optional: TestClient) -> None:
+        resp = client_no_optional.get("/v1/triggers")
+        assert resp.status_code == 503
+
+    def test_post_trigger_returns_503_without_service(self, client_no_optional: TestClient) -> None:
+        resp = client_no_optional.post("/v1/triggers/whatever", json={"msg": "hi"})
+        assert resp.status_code == 503
+
+    def test_list_triggers_returns_registered_adapters(self, trigger_client: TestClient) -> None:
+        resp = trigger_client.get("/v1/triggers")
+        assert resp.status_code == 200
+        items = resp.json()
+        assert len(items) == 1
+        assert items[0]["name"] == "test-hook"
+        assert items[0]["healthy"] is True
+        assert items[0]["issues"] == []
+
+    def test_post_unknown_trigger_returns_404(self, trigger_client: TestClient) -> None:
+        resp = trigger_client.post("/v1/triggers/no-such-hook", json={"msg": "hi"})
+        assert resp.status_code == 404
+        assert resp.json()["code"] == "unknown_trigger"
+
+    def test_post_trigger_returns_202_with_metadata(self, trigger_client: TestClient) -> None:
+        resp = trigger_client.post("/v1/triggers/test-hook", json={"msg": "hello"})
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["accepted"] is True
+        assert body["trigger_name"] == "test-hook"
+        assert "received_at" in body
+
+    def test_trigger_enqueues_payload_for_scheduler(self, trigger_client: TestClient, supervisor: TaskSupervisor) -> None:
+        """Deliver a payload then advance the scheduler one cycle — task must appear in store."""
+        from engine.interfaces.task import TaskSubmission
+        from engine.runtime.scheduler import (
+            TriggerSchedulerService,
+            WebhookIngressService,
+            WebhookTriggerAdapter,
+        )
+
+        adapter = WebhookTriggerAdapter(
+            name="cycle-hook",
+            mapper=lambda p: TaskSubmission(
+                name="cycle-task",
+                capability="echo",
+                input={"message": p.get("data", "x")},
+            ),
+        )
+        ingress = WebhookIngressService(adapters=[adapter])
+        scheduler = TriggerSchedulerService(adapters=[adapter], sink=supervisor)
+
+        ingress.ingest(trigger_name="cycle-hook", payload={"data": "from-webhook"})
+        submitted = scheduler.run_once()
+        assert len(submitted) == 1
+        assert submitted[0].capability == "echo"
+
+    def test_trigger_endpoint_in_openapi_schema(self, trigger_client: TestClient) -> None:
+        schema = trigger_client.get("/openapi.json").json()
+        assert "/v1/triggers/{trigger_name}" in schema["paths"]
+        assert "/v1/triggers" in schema["paths"]
 
 
 # ---------------------------------------------------------------------------
