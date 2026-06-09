@@ -96,6 +96,16 @@ COMMAND_HELP_TOPICS: dict[str, dict[str, str]] = {
         ),
         "example": "cond --store /tmp/tasks.json health",
     },
+    "serve": {
+        "summary": "Start the Conductor Engine HTTP API server.",
+        "usage": "cond serve [--host HOST] [--port PORT] [--log-level LEVEL]",
+        "details": (
+            "Starts a FastAPI/uvicorn HTTP server that exposes the full control-plane API. "
+            "Requires: pip install conductor-engine[api]\n"
+            "Docs are available at http://<host>:<port>/docs once the server is running."
+        ),
+        "example": "cond serve --host 0.0.0.0 --port 8080",
+    },
     "snapshot": {
         "summary": "Emit a versioned control-plane snapshot as JSON.",
         "usage": "cond snapshot",
@@ -684,6 +694,16 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("health", help="Run CLI-facing health checks.")
     subparsers.add_parser("snapshot", help="Emit a versioned control-plane snapshot as JSON.")
 
+    serve_parser = subparsers.add_parser("serve", help="Start the HTTP API server (requires [api] extra).")
+    serve_parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
+    serve_parser.add_argument("--port", type=int, default=8080, help="TCP port (default: 8080)")
+    serve_parser.add_argument(
+        "--log-level",
+        default="info",
+        choices=["debug", "info", "warning", "error"],
+        help="Uvicorn log level (default: info)",
+    )
+
     help_parser = subparsers.add_parser("help", help="Show offline help topics.")
     help_parser.add_argument("topic", nargs="?", help="Optional command or capability topic.")
 
@@ -695,6 +715,25 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        # serve manages its own engine lifecycle — handle before the shared setup
+        if args.command == "serve":
+            try:
+                from engine.api.server import serve as _api_serve
+            except ImportError:
+                err_console.print(
+                    "The API server requires additional dependencies.\n"
+                    "Install with: pip install conductor-engine[api]"
+                )
+                return 2
+            _api_serve(
+                host=args.host,
+                port=args.port,
+                store_path=args.store,
+                capabilities_path=args.config,
+                log_level=args.log_level,
+            )
+            return 0
+
         workdir = Path.cwd()
         registry = _resolve_registry(args.config, workdir)
         store = LocalTaskStore(args.store)
