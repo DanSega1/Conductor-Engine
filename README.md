@@ -32,11 +32,11 @@ This project is AI-enhanced. A significant portion of the code, tests, and docum
 | [Phase 2: Workflow Layer](docs/conductor/roadmap.md#phase-2--workflow-layer-complete) | ✅ Complete | Planner, worker, validator, and orchestrator contracts over the existing supervisor path. |
 | [Phase 3: Production Hardening](docs/conductor/roadmap.md#phase-3--production-hardening-complete) | ✅ Complete | Observability, policies, pluggable stores, approvals, and parallel workflow execution. |
 | [Phase 4: Control Plane + TUI](docs/conductor/roadmap.md#phase-4--control-plane--tui-wip) | ✅ Complete | Versioned HTTP control-plane API (`engine/api/`), SSE event stream, multi-engine cluster routing, and `cond serve`. |
-| [Phase 5: Autonomous Operation](docs/conductor/roadmap.md#phase-5--autonomous-operation-wip) | 🔄 WIP | Self-enforcing policy, behavioral retry, cron/webhook triggers, scheduler lifecycle, and unattended execution paths. |
+| [Phase 5: Autonomous Operation](docs/conductor/roadmap.md#phase-5--autonomous-operation-complete) | ✅ Complete | Self-enforcing policy, behavioral retry, cron/webhook triggers, sandboxed execution, require_approval gate, rich audit trail, and integration test suite. |
 | [Phase 6: Guild Layer](docs/conductor/roadmap.md#phase-6--guild-layer) | Planned | Cross-project failure learning and role-scoped knowledge sharing. |
 | [Phase 7: Remote Deployment and Protected Operation](docs/conductor/roadmap.md#phase-7--remote-deployment-and-protected-operation) | Planned | Protected remote operation, multi-tenant isolation, remote runners, and hardened deployment targets. |
 
-> **Phase 5 next slice:** production HTTP bindings for webhook ingress, `ExponentialBackoffRetryStrategy`, and integration tests covering control-plane contract stability.
+> **Next:** Phase 6 — Guild Layer (cross-project failure learning and role-scoped knowledge sharing).
 
 See the [full roadmap](docs/conductor/roadmap.md) for phase scope, rationale, and backlog details.
 

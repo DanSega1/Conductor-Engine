@@ -128,44 +128,25 @@ A versioned HTTP control-plane API that `condor-tui`, wrapper services, and futu
 
 ---
 
-## Phase 5 — Autonomous Operation (WIP)
+## Phase 5 — Autonomous Operation (complete)
 
 The platform enforces its own rules and recovers without a human present.
 
 ### Done
 
-- **Slice 1 — Failure contracts and escalation wiring** — `FailureContext`, `RetryStrategy`, `DefaultRetryStrategy` (with `enable_escalation`), `TaskStatus.ESCALATED`, `EventType.TASK_ESCALATED`, and full supervisor wiring. All transitions persist to the store and emit structured events.
-- **Slice 2 — Escalation threshold and CLI visibility** — `escalation_threshold` on `DefaultRetryStrategy` (escalate only when `attempt >= threshold`; `None` escalates on any exhaustion). ESCALATED tasks appear in `cond task list` with ⚠ bold-yellow marker and are selectable via `--status escalated`. Design-integrity invariant added.
-- **Slice 3 — OPA policy integration** — `OPAInput` standard bundle (task + capability + workdir serialised for Rego), `OPAPolicyEngine` (httpx HTTP client to OPA REST `/v1/data/{path}`; `fail_open`/`fail_closed` modes; `health_check()`), `RiskLevelPolicyEngine` (built-in rule-based engine; `deny_above`, `require_approval_at`, `allowed_capabilities` allowlist — works without OPA server). Both plug into the existing `PolicyEngine` Protocol without touching the supervisor.
-- **Slice 4 — Schedules and trigger adapters (initial)** — Added scheduler contracts (`TriggerDispatch`, `ExternalTriggerAdapter`) and runtime adapters for cron and webhook ingestion (`CronTriggerAdapter`, `WebhookTriggerAdapter`) with deterministic poll semantics.
-- **Slice 5 — Trigger scheduler service (initial)** — Added `TriggerSchedulerService` to poll adapters and submit mapped dispatches through the supervisor path (`submit()` sink), including trigger provenance metadata enrichment and health/runtime issue aggregation.
-- **Slice 6 — Webhook ingress boundary (initial)** — Added `WebhookIngressService` as a transport-facing seam that routes decoded webhook payloads to named webhook adapters, with end-to-end coverage from ingress to scheduler submission.
-- **Slice 7 — Scheduler lifecycle controls (initial)** — Added `TriggerSchedulerLoopRunner` around `TriggerSchedulerService.run_once()` with base polling interval, exponential idle backoff, interval reset after submitted work, optional jitter, deterministic hook injection for tests (`sleep_fn`, `random_fn`), max-cycle bounded runs, and graceful stop-signal shutdown.
-
-### Next — Slice 8: Behavioral retry strategies
-
-The supervisor already handles `delay_seconds` and `adjusted_input` from `RetryDecision` (wired in Slice 1). `DefaultRetryStrategy` is purely mechanical. Slice 8 adds concrete retry strategies that use both fields:
-
-- **`ExponentialBackoffRetryStrategy`** — emits `delay_seconds` with configurable `base_delay`, `multiplier`, and `max_delay`; optionally escalates when exhausted.
-- **`JitteredBackoffRetryStrategy`** — adds randomised jitter to prevent thundering-herd retry storms.
-- **`InputAdjustingRetryStrategy`** (protocol extension) — demonstrates the `adjusted_input` path with a caller-supplied `adjuster: Callable[[FailureContext], dict]`.
-- All three implement `RetryStrategy` Protocol; no supervisor changes required.
-
-### Next — Slice 9: Production HTTP bindings for webhook ingress
-
-`WebhookIngressService.ingest()` is transport-agnostic. Slice 9 connects it to the HTTP API:
-
-- `POST /v1/triggers/{trigger_name}` route in `engine/api/routes/triggers.py` — accepts raw JSON body, calls `WebhookIngressService.ingest()`, returns 202.
-- `GET /v1/triggers` — lists registered adapters and their health status.
-- `TriggerSchedulerService` registered on the FastAPI app via `app.state` (same pattern as supervisor/registry).
-- Integration test: POST a payload, advance scheduler one cycle, assert task appears in store.
-
-### Planned
-
-- **Human-in-the-loop as a mode, not a requirement** — tasks, direction, and approvals can come from humans or from upstream systems. The engine does not stall waiting for human input unless explicitly configured to.
-- **Sandboxed execution** — capability execution runs in isolated contexts; filesystem and network capabilities are constrained by policy, not just by code.
-- **Audit trail completeness** — every task decision (allow, deny, retry, escalate) recorded with full context.
-- **Integration test suite** — end-to-end operator and wrapper flows against control-plane contracts; webhook-triggered submissions through scheduler ingress; regression fixtures for CLI and TUI consumers.
+- **Slice 1 — Failure contracts and escalation wiring** — `FailureContext`, `RetryStrategy`, `DefaultRetryStrategy` (with `enable_escalation`), `TaskStatus.ESCALATED`, `EventType.TASK_ESCALATED`, and full supervisor wiring.
+- **Slice 2 — Escalation threshold and CLI visibility** — `escalation_threshold` on `DefaultRetryStrategy`. ESCALATED tasks appear in `cond task list` with ⚠ bold-yellow marker.
+- **Slice 3 — OPA policy integration** — `OPAPolicyEngine`, `RiskLevelPolicyEngine`. Both plug into the existing `PolicyEngine` Protocol without touching the supervisor.
+- **Slice 4 — Cron/webhook trigger adapters** — `CronTriggerAdapter`, `WebhookTriggerAdapter` with deterministic poll semantics.
+- **Slice 5 — Trigger scheduler service** — `TriggerSchedulerService` polls adapters and submits dispatches through the supervisor path.
+- **Slice 6 — Webhook ingress boundary** — `WebhookIngressService` routes decoded webhook payloads to named adapters.
+- **Slice 7 — Scheduler lifecycle controls** — `TriggerSchedulerLoopRunner` with exponential idle backoff, jitter, max-cycle bounds, and graceful stop-signal shutdown.
+- **Slice 8 — Behavioral retry strategies** — `ExponentialBackoffRetryStrategy`, `JitteredBackoffRetryStrategy`, `InputAdjustingRetryStrategy`. All implement `RetryStrategy` Protocol; supervisor already handles `delay_seconds` and `adjusted_input`.
+- **Slice 9 — Production HTTP bindings for webhook ingress** — `POST /v1/triggers/{name}`, `GET /v1/triggers`; `trigger_service` param on `create_api_app`.
+- **Slice 10 — Human-in-the-loop as a configured mode** — `require_approval: bool` on `CapabilityDescriptor`; supervisor gates every task using that capability at `AWAITING_APPROVAL` before the policy engine is consulted. Declarable in YAML capability config via `require_approval: true`.
+- **Slice 11 — Sandboxed subprocess execution** — `SubprocessCapabilityRunner` and `_sandbox_worker` module execute capabilities in isolated child processes with hard wall-clock timeout, no shared state, and clean resource reclamation. Opt-in; existing in-process path unchanged.
+- **Slice 12 — Richer audit trail for policy decisions** — every `_apply_policy` call now stamps `policy_engine` (class name) and `decision_type` into the audit entry metadata, regardless of allow/deny/require_approval outcome.
+- **Slice 13 — Integration test suite** — `tests/integration/test_control_plane_integration.py`; 17 tests across: control-plane schema stability, require_approval gate, webhook→scheduler→store end-to-end, policy deny audit trail, retry with backoff, sandboxed subprocess execution.
 
 ---
 
