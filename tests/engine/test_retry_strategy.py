@@ -420,3 +420,243 @@ class TestRetryStrategyProtocol:
         assert decision.should_retry is False
         assert decision.escalate is True
         assert "Custom policy" in decision.reason
+
+
+# ---------------------------------------------------------------------------
+# ExponentialBackoffRetryStrategy
+# ---------------------------------------------------------------------------
+
+
+class TestExponentialBackoffRetryStrategy:
+    from engine.runtime.retry import ExponentialBackoffRetryStrategy
+
+    def _make_failure(self, *, attempt: int, max_retries: int) -> FailureContext:
+        return FailureContext(
+            task_id="t1",
+            capability="echo",
+            attempt=attempt,
+            max_retries=max_retries,
+            error_type="RuntimeError",
+            error_message="boom",
+        )
+
+    def _make_task(self, *, attempt: int, max_retries: int) -> TaskRecord:
+        return TaskRecord(name="t", capability="echo", attempt=attempt, max_retries=max_retries)
+
+    def test_retries_while_attempts_remain(self) -> None:
+        from engine.runtime.retry import ExponentialBackoffRetryStrategy
+        strategy = ExponentialBackoffRetryStrategy(base_delay=1.0, multiplier=2.0, max_delay=60.0)
+        decision = strategy.decide(self._make_task(attempt=1, max_retries=3), self._make_failure(attempt=1, max_retries=3))
+        assert decision.should_retry is True
+        assert decision.escalate is False
+
+    def test_delay_increases_exponentially(self) -> None:
+        from engine.runtime.retry import ExponentialBackoffRetryStrategy
+        strategy = ExponentialBackoffRetryStrategy(base_delay=1.0, multiplier=2.0, max_delay=100.0)
+        delays = [
+            strategy.decide(self._make_task(attempt=a, max_retries=5), self._make_failure(attempt=a, max_retries=5)).delay_seconds
+            for a in range(1, 5)
+        ]
+        # 1.0, 2.0, 4.0, 8.0
+        assert delays == [1.0, 2.0, 4.0, 8.0]
+
+    def test_delay_is_capped_at_max(self) -> None:
+        from engine.runtime.retry import ExponentialBackoffRetryStrategy
+        strategy = ExponentialBackoffRetryStrategy(base_delay=10.0, multiplier=10.0, max_delay=50.0)
+        decision = strategy.decide(self._make_task(attempt=3, max_retries=5), self._make_failure(attempt=3, max_retries=5))
+        assert decision.delay_seconds == 50.0
+
+    def test_no_retry_when_exhausted(self) -> None:
+        from engine.runtime.retry import ExponentialBackoffRetryStrategy
+        strategy = ExponentialBackoffRetryStrategy()
+        decision = strategy.decide(self._make_task(attempt=4, max_retries=3), self._make_failure(attempt=4, max_retries=3))
+        assert decision.should_retry is False
+
+    def test_escalates_when_enabled_and_exhausted(self) -> None:
+        from engine.runtime.retry import ExponentialBackoffRetryStrategy
+        strategy = ExponentialBackoffRetryStrategy(enable_escalation=True)
+        decision = strategy.decide(self._make_task(attempt=4, max_retries=3), self._make_failure(attempt=4, max_retries=3))
+        assert decision.should_retry is False
+        assert decision.escalate is True
+
+    def test_no_escalation_when_disabled(self) -> None:
+        from engine.runtime.retry import ExponentialBackoffRetryStrategy
+        strategy = ExponentialBackoffRetryStrategy(enable_escalation=False)
+        decision = strategy.decide(self._make_task(attempt=4, max_retries=3), self._make_failure(attempt=4, max_retries=3))
+        assert decision.escalate is False
+
+    def test_escalation_threshold_gates_escalation(self) -> None:
+        from engine.runtime.retry import ExponentialBackoffRetryStrategy
+        strategy = ExponentialBackoffRetryStrategy(enable_escalation=True, escalation_threshold=10)
+        decision = strategy.decide(self._make_task(attempt=4, max_retries=3), self._make_failure(attempt=4, max_retries=3))
+        assert decision.should_retry is False
+        assert decision.escalate is False
+
+    def test_reason_contains_delay(self) -> None:
+        from engine.runtime.retry import ExponentialBackoffRetryStrategy
+        strategy = ExponentialBackoffRetryStrategy(base_delay=2.0)
+        decision = strategy.decide(self._make_task(attempt=1, max_retries=3), self._make_failure(attempt=1, max_retries=3))
+        assert "2.00s" in decision.reason
+
+    def test_invalid_base_delay_raises(self) -> None:
+        import pytest
+
+        from engine.runtime.retry import ExponentialBackoffRetryStrategy
+        with pytest.raises(ValueError, match="base_delay"):
+            ExponentialBackoffRetryStrategy(base_delay=0)
+
+    def test_invalid_multiplier_raises(self) -> None:
+        import pytest
+
+        from engine.runtime.retry import ExponentialBackoffRetryStrategy
+        with pytest.raises(ValueError, match="multiplier"):
+            ExponentialBackoffRetryStrategy(multiplier=0.5)
+
+    def test_max_delay_less_than_base_raises(self) -> None:
+        import pytest
+
+        from engine.runtime.retry import ExponentialBackoffRetryStrategy
+        with pytest.raises(ValueError, match="max_delay"):
+            ExponentialBackoffRetryStrategy(base_delay=10.0, max_delay=5.0)
+
+
+# ---------------------------------------------------------------------------
+# JitteredBackoffRetryStrategy
+# ---------------------------------------------------------------------------
+
+
+class TestJitteredBackoffRetryStrategy:
+    def _make_failure(self, *, attempt: int, max_retries: int) -> FailureContext:
+        return FailureContext(
+            task_id="t1",
+            capability="echo",
+            attempt=attempt,
+            max_retries=max_retries,
+            error_type="RuntimeError",
+            error_message="boom",
+        )
+
+    def _make_task(self, *, attempt: int, max_retries: int) -> TaskRecord:
+        return TaskRecord(name="t", capability="echo", attempt=attempt, max_retries=max_retries)
+
+    def test_retries_while_attempts_remain(self) -> None:
+        from engine.runtime.retry import JitteredBackoffRetryStrategy
+        strategy = JitteredBackoffRetryStrategy(random_fn=lambda: 0.5)
+        decision = strategy.decide(self._make_task(attempt=1, max_retries=3), self._make_failure(attempt=1, max_retries=3))
+        assert decision.should_retry is True
+
+    def test_delay_is_within_expected_range(self) -> None:
+        from engine.runtime.retry import JitteredBackoffRetryStrategy
+        # random_fn=1.0 gives maximum jitter (full cap)
+        strategy = JitteredBackoffRetryStrategy(base_delay=1.0, multiplier=2.0, max_delay=100.0, random_fn=lambda: 1.0)
+        decision = strategy.decide(self._make_task(attempt=2, max_retries=5), self._make_failure(attempt=2, max_retries=5))
+        # cap at attempt 2 = 1.0 * 2^1 = 2.0; jitter=1.0 => delay=2.0
+        assert decision.delay_seconds == 2.0
+
+    def test_zero_jitter_gives_zero_delay(self) -> None:
+        from engine.runtime.retry import JitteredBackoffRetryStrategy
+        strategy = JitteredBackoffRetryStrategy(random_fn=lambda: 0.0)
+        decision = strategy.decide(self._make_task(attempt=1, max_retries=3), self._make_failure(attempt=1, max_retries=3))
+        assert decision.delay_seconds == 0.0
+
+    def test_delay_is_capped_by_max(self) -> None:
+        from engine.runtime.retry import JitteredBackoffRetryStrategy
+        # base=1, multiplier=100 -> cap at attempt 3 = 1*100^2=10000, clamped to max_delay=30
+        # random_fn=1.0 -> delay = 1.0 * 30 = 30.0
+        strategy = JitteredBackoffRetryStrategy(base_delay=1.0, multiplier=100.0, max_delay=30.0, random_fn=lambda: 1.0)
+        decision = strategy.decide(self._make_task(attempt=3, max_retries=5), self._make_failure(attempt=3, max_retries=5))
+        assert decision.delay_seconds <= 30.0
+
+    def test_no_retry_when_exhausted(self) -> None:
+        from engine.runtime.retry import JitteredBackoffRetryStrategy
+        strategy = JitteredBackoffRetryStrategy(random_fn=lambda: 0.5)
+        decision = strategy.decide(self._make_task(attempt=4, max_retries=3), self._make_failure(attempt=4, max_retries=3))
+        assert decision.should_retry is False
+
+    def test_escalates_when_enabled(self) -> None:
+        from engine.runtime.retry import JitteredBackoffRetryStrategy
+        strategy = JitteredBackoffRetryStrategy(enable_escalation=True, random_fn=lambda: 0.5)
+        decision = strategy.decide(self._make_task(attempt=4, max_retries=3), self._make_failure(attempt=4, max_retries=3))
+        assert decision.escalate is True
+
+    def test_reason_mentions_jitter(self) -> None:
+        from engine.runtime.retry import JitteredBackoffRetryStrategy
+        strategy = JitteredBackoffRetryStrategy(random_fn=lambda: 0.5)
+        decision = strategy.decide(self._make_task(attempt=1, max_retries=3), self._make_failure(attempt=1, max_retries=3))
+        assert "jittered" in decision.reason
+
+
+# ---------------------------------------------------------------------------
+# InputAdjustingRetryStrategy
+# ---------------------------------------------------------------------------
+
+
+class TestInputAdjustingRetryStrategy:
+    def _make_failure(self, *, attempt: int, max_retries: int) -> FailureContext:
+        return FailureContext(
+            task_id="t1",
+            capability="echo",
+            attempt=attempt,
+            max_retries=max_retries,
+            error_type="RuntimeError",
+            error_message="boom",
+        )
+
+    def _make_task(self, *, attempt: int, max_retries: int) -> TaskRecord:
+        return TaskRecord(name="t", capability="echo", attempt=attempt, max_retries=max_retries)
+
+    def test_adjusted_input_is_set(self) -> None:
+        from engine.runtime.retry import InputAdjustingRetryStrategy
+        strategy = InputAdjustingRetryStrategy(adjuster=lambda ctx: {"attempt": ctx.attempt})
+        decision = strategy.decide(self._make_task(attempt=1, max_retries=3), self._make_failure(attempt=1, max_retries=3))
+        assert decision.should_retry is True
+        assert decision.adjusted_input == {"attempt": 1}
+
+    def test_none_adjuster_result_passes_through(self) -> None:
+        from engine.runtime.retry import InputAdjustingRetryStrategy
+        strategy = InputAdjustingRetryStrategy(adjuster=lambda ctx: None)
+        decision = strategy.decide(self._make_task(attempt=1, max_retries=3), self._make_failure(attempt=1, max_retries=3))
+        assert decision.should_retry is True
+        assert decision.adjusted_input is None
+
+    def test_no_delay_without_base_strategy(self) -> None:
+        from engine.runtime.retry import InputAdjustingRetryStrategy
+        strategy = InputAdjustingRetryStrategy(adjuster=lambda ctx: {})
+        decision = strategy.decide(self._make_task(attempt=1, max_retries=3), self._make_failure(attempt=1, max_retries=3))
+        assert decision.delay_seconds is None
+
+    def test_uses_delay_from_base_strategy(self) -> None:
+        from engine.runtime.retry import (
+            ExponentialBackoffRetryStrategy,
+            InputAdjustingRetryStrategy,
+        )
+        base = ExponentialBackoffRetryStrategy(base_delay=5.0, multiplier=1.0, max_delay=100.0)
+        strategy = InputAdjustingRetryStrategy(adjuster=lambda ctx: {"retry": True}, base=base)
+        decision = strategy.decide(self._make_task(attempt=1, max_retries=3), self._make_failure(attempt=1, max_retries=3))
+        assert decision.delay_seconds == 5.0
+        assert decision.adjusted_input == {"retry": True}
+
+    def test_no_retry_when_exhausted(self) -> None:
+        from engine.runtime.retry import InputAdjustingRetryStrategy
+        strategy = InputAdjustingRetryStrategy(adjuster=lambda ctx: {})
+        decision = strategy.decide(self._make_task(attempt=4, max_retries=3), self._make_failure(attempt=4, max_retries=3))
+        assert decision.should_retry is False
+
+    def test_escalates_when_enabled(self) -> None:
+        from engine.runtime.retry import InputAdjustingRetryStrategy
+        strategy = InputAdjustingRetryStrategy(adjuster=lambda ctx: {}, enable_escalation=True)
+        decision = strategy.decide(self._make_task(attempt=4, max_retries=3), self._make_failure(attempt=4, max_retries=3))
+        assert decision.escalate is True
+
+    def test_adjuster_receives_full_failure_context(self) -> None:
+        from engine.runtime.retry import InputAdjustingRetryStrategy
+        captured: list[FailureContext] = []
+        def adjuster(ctx: FailureContext) -> dict:
+            captured.append(ctx)
+            return {}
+        strategy = InputAdjustingRetryStrategy(adjuster=adjuster)
+        failure = self._make_failure(attempt=2, max_retries=5)
+        strategy.decide(self._make_task(attempt=2, max_retries=5), failure)
+        assert len(captured) == 1
+        assert captured[0].attempt == 2
+        assert captured[0].error_type == "RuntimeError"
