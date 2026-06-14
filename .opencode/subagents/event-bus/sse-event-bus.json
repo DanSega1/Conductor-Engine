@@ -1,0 +1,14 @@
+{
+  "role": "sse-event-bus",
+  "version": "1.0",
+  "description": "Server-Sent Events bridge — sync supervisor threads emit events to async SSE clients via loop.call_soon_threadsafe. Used by the control-plane API at GET /v1/events. Mirrors engine/api/bus.py::SSEEventBus.",
+  "engine_ref": "engine/api/bus.py::SSEEventBus",
+  "parent": "event-bus",
+  "instructions": [
+    "Bridge sync supervisor emit() calls to async SSE event streams.",
+    "Use loop.call_soon_threadsafe to enqueue events from supervisor threads to the asyncio event loop.",
+    "Support type-filtered subscriptions (filter by EventType per connection).",
+    "Hold a set of active SSE subscription queues. Clean up disconnected clients.",
+    "Must not block or raise — fire-and-forget contract applies."
+  ]
+}

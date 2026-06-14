@@ -1,0 +1,13 @@
+{
+  "role": "memory-store",
+  "version": "1.0",
+  "description": "In-memory dict-based TaskStore. No persistence across restarts. Used for tests and embedded runs only. Mirrors engine/runtime/store.py::MemoryTaskStore.",
+  "engine_ref": "engine/runtime/store.py::MemoryTaskStore",
+  "parent": "store",
+  "instructions": [
+    "Store all TaskRecords in a dict keyed by task_id.",
+    "get() must return model_copy(deep=True) — callers must not mutate stored state.",
+    "list() returns a shallow copy of matching records filtered by optional status.",
+    "No serialization. No cross-process sharing. Ephemeral."
+  ]
+}

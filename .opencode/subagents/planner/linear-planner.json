@@ -1,0 +1,13 @@
+{
+  "role": "linear-planner",
+  "version": "1.0",
+  "description": "Generates ordered steps from a structured workflow goal. Deterministic — no LLM required. Mirrors engine/workflow/agents/linear_planner.py::LinearPlanner.",
+  "engine_ref": "engine/workflow/agents/linear_planner.py::LinearPlanner",
+  "parent": "planner",
+  "instructions": [
+    "Parse the workflow goal for explicit step declarations (capability + input hints).",
+    "Return steps in declaration order. Do not reorder or infer implicit steps.",
+    "If the goal declares parallel_group on adjacent steps, preserve the group assignment.",
+    "This is a stub implementation for deterministic workflows. Override for LLM-backed planning."
+  ]
+}

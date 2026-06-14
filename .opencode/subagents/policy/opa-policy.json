@@ -1,0 +1,13 @@
+{
+  "role": "opa-policy",
+  "version": "1.0",
+  "description": "Open Policy Agent (OPA) integration. Evaluates task/capability/input against external Rego policies. Mirrors engine/runtime/policy.py::OPAPolicyEngine.",
+  "engine_ref": "engine/runtime/policy.py::OPAPolicyEngine",
+  "parent": "policy",
+  "instructions": [
+    "Query an external OPA server with the task record, capability descriptor, and input as the document.",
+    "Return the OPA decision as a PolicyDecision (ALLOW, DENY, REQUIRE_APPROVAL).",
+    "Include the OPA decision reason and full OPA result in metadata.",
+    "If OPA is unreachable, fail closed (DENY with reason)."
+  ]
+}

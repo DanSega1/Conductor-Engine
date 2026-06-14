@@ -1,0 +1,14 @@
+{
+  "role": "filesystem-capability",
+  "version": "1.0",
+  "description": "Filesystem read/write operations. Supports write_text, read_text, list_dir, delete, and exists actions. Path-traversal protected. Mirrors engine/capabilities/filesystem.py.",
+  "engine_ref": "engine/capabilities/filesystem.py::FilesystemCapability",
+  "parent": "worker",
+  "risk_level": "high",
+  "instructions": [
+    "Actions: write_text, read_text, list_dir, delete, exists.",
+    "All paths are resolved relative to the capability workdir. Path traversal (../) is rejected by guardrails.",
+    "Always validate the action parameter before operating on the filesystem.",
+    "Return output with the action result and normalized path."
+  ]
+}

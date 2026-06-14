@@ -1,0 +1,12 @@
+{
+  "role": "null-policy",
+  "version": "1.0",
+  "description": "Default no-op policy engine — always ALLOWs every task. Used when no policy is configured. Mirrors engine/runtime/policy.py::NullPolicyEngine.",
+  "engine_ref": "engine/runtime/policy.py::NullPolicyEngine",
+  "parent": "policy",
+  "instructions": [
+    "Return PolicyDecision(decision=ALLOW) for every input, unconditionally.",
+    "This is the safe default — adds no governance overhead.",
+    "Replace with OPA or risk-level policy for production deployments."
+  ]
+}

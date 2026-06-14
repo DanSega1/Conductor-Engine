@@ -1,0 +1,14 @@
+{
+  "role": "exponential-backoff-retry",
+  "version": "1.0",
+  "description": "Retries with exponential delay between attempts (2^n seconds). Preferred for transient failures like network timeouts. Mirrors engine/runtime/retry.py::ExponentialBackoffRetryStrategy.",
+  "engine_ref": "engine/runtime/retry.py::ExponentialBackoffRetryStrategy",
+  "parent": "supervisor",
+  "instructions": [
+    "Calculate delay as base_delay * (2 ^ attempt). Default base_delay = 1 second.",
+    "Capped at max_delay (default 60 seconds).",
+    "If attempt <= max_retries, return should_retry=true with delay_seconds set.",
+    "Honor escalation_threshold and escalate_on_exhaustion settings.",
+    "No input adjustment."
+  ]
+}

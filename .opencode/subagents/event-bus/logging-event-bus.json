@@ -1,0 +1,12 @@
+{
+  "role": "logging-event-bus",
+  "version": "1.0",
+  "description": "Logging event bus — writes all TaskEvents to structured logs via Python logging. Suitable for observability without a streaming consumer.",
+  "engine_ref": "engine/runtime/bus.py::LoggingEventBus",
+  "parent": "event-bus",
+  "instructions": [
+    "Serialize TaskEvent to a structured log line (JSON format) at INFO level.",
+    "Include all TaskEvent fields: event_type, task_id, task_name, capability, status, attempt, workflow_id, error, metadata.",
+    "Must not raise exceptions on serialization failure — log a warning and continue."
+  ]
+}

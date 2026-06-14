@@ -1,0 +1,12 @@
+{
+  "role": "passthrough-validator",
+  "version": "1.0",
+  "description": "Always passes validation — accepts any set of completed TaskRecords. Suitable for workflows without post-execution validation needs. Mirrors engine/workflow/agents/passthrough_validator.py::PassthroughValidator.",
+  "engine_ref": "engine/workflow/agents/passthrough_validator.py::PassthroughValidator",
+  "parent": "validator",
+  "instructions": [
+    "Return passed=true and verdict='validation passed' for any workflow with all steps completed or partial.",
+    "Do not inspect task outputs. Do not fail workflows.",
+    "Override this stub with a real ValidatorInterface implementation for production use."
+  ]
+}

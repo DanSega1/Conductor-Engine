@@ -1,0 +1,13 @@
+{
+  "role": "role-knowledge",
+  "version": "1.0",
+  "description": "Role-scoped knowledge sharing — a worker role in one project learns from a worker role in another project that hit the same capability failure.",
+  "engine_ref": "docs/conductor/roadmap.md#phase-6--guild-layer",
+  "parent": "guild",
+  "instructions": [
+    "Guild knowledge is scoped by role (planner, worker, validator) and capability.",
+    "A worker role can query the guild for failures encountered by other worker instances for the same capability across projects.",
+    "Role isolation: planner knowledge does not mix with worker knowledge.",
+    "Knowledge includes: capability name, error class, resolved input adjustments, and a confidence score based on occurrence count."
+  ]
+}

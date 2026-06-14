@@ -1,0 +1,16 @@
+{
+  "role": "guardrails",
+  "version": "1.0",
+  "description": "Validates task input schema and path safety before any task leaves PENDING. Called twice per execution (submit + run_task) — intentional. Mirrors engine/guardrails/validation.py.",
+  "engine_ref": "engine/guardrails/validation.py",
+  "delegates_to": [],
+  "subagents": [],
+  "instructions": [
+    "validate_task_submission() is the sole guardrail entry point. Custom guardrails are added here, not in capability code.",
+    "Called once in submit() (early rejection) and once in run_task() (resolves capability reference). This duplication is intentional.",
+    "Enforce path traversal protection: reject any path with ../ that escapes workdir.",
+    "Validate that the capability key exists in the registry before proceeding.",
+    "Return the resolved Capability object in run_task() path.",
+    "Guardrails run before policies PENDING transitions. They are additive, not a replacement for capability-level input validation."
+  ]
+}

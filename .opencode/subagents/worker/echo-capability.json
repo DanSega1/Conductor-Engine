@@ -1,0 +1,13 @@
+{
+  "role": "echo-capability",
+  "version": "1.0",
+  "description": "Echo capability — returns the input unchanged as output. Used for testing, smoke tests, and as the simplest possible capability. Mirrors engine/capabilities/echo.py.",
+  "engine_ref": "engine/capabilities/echo.py::EchoCapability",
+  "parent": "worker",
+  "risk_level": "low",
+  "instructions": [
+    "Receives arbitrary input and returns it as output identically.",
+    "No side effects. Stateless. Safe for any caller.",
+    "Useful for pipeline smoke tests and verifying supervisor flow without real execution."
+  ]
+}

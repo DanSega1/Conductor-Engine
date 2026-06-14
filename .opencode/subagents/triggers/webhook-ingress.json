@@ -1,0 +1,14 @@
+{
+  "role": "webhook-ingress",
+  "version": "1.0",
+  "description": "Webhook ingress boundary — decodes incoming webhook HTTP requests and routes to named adapters. Exposed via POST /v1/triggers/{name} on the control-plane API. Mirrors engine/runtime/scheduler.py::WebhookIngressService.",
+  "engine_ref": "engine/runtime/scheduler.py::WebhookIngressService",
+  "parent": "scheduler",
+  "instructions": [
+    "Receive an HTTP request with trigger name, headers, body, query params.",
+    "Decode the payload (JSON body, form-encoded, or raw text depending on Content-Type).",
+    "Route to the named WebhookTriggerAdapter.",
+    "Return 200 on successful dispatch, 404 if trigger name is unknown, 400 on malformed payload.",
+    "Submit the resulting TaskSubmission to the supervisor."
+  ]
+}
