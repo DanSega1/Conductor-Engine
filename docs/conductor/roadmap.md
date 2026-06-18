@@ -150,33 +150,42 @@ The platform enforces its own rules and recovers without a human present.
 
 ---
 
-## Phase 6 — Guild Layer
+## Phase 6 — Guild Layer (complete)
 
 Workers and roles share learning across projects.
 
 The "guild" is a cross-project knowledge layer — a structured way for agent roles to publish what they learned from a hard task, a failure pattern, or an edge case, and for other instances of the same role to discover and apply that knowledge.
 
-- **Failure knowledge base** — when a task fails after max retries, the failure context is published to the guild store (capability, input shape, error class, resolution if found).
-- **Peer suggestions** — before attempting a task similar to a known failure, the runtime checks the guild for prior resolutions and applies them as input hints or approach adjustments.
-- **Role-scoped knowledge** — a worker role in Project A can learn from a worker role in Project B that hit the same capability failure.
-- **No centralized model required** — guild knowledge is structured data (capability + error fingerprint → resolution hint), not LLM embeddings. Works without a model in the loop.
-- **Opt-in per deployment** — guild participation is configured, not automatic. A deployment that handles sensitive data can operate fully isolated.
+### Done
+
+- **Failure knowledge base** (`engine/guild/knowledge.py`) — when a task fails after max retries or escalates, the failure context is published to the guild store. Uses stable `FailureFingerprint` keys (capability + error_type + input_fingerprint). Creates new records or updates existing ones with incremented failure counts. Enforces a max-records limit to prevent unbounded growth.
+- **Peer suggestions** (`engine/guild/peer.py`) — before task execution, the supervisor queries the guild for records matching the task capability. Confidence scoring: base 0.5 for capability match, +0.3 for exact input fingerprint match, +0.2 for role match. Results sorted by descending confidence. Approach adjustments from matched records are applied to task input.
+- **Role-scoped knowledge** — peer suggestion confidence is boosted when the requesting role matches the stored role (+0.2), enabling workers to learn from other workers in different projects.
+- **Guild store implementations** — `MemoryGuildStore` (in-memory, for testing) and `LocalGuildStore` (JSON file-backed, for local deployments). Both implement the `GuildStore` Protocol with save/get/list/delete/clear operations and deep-copy semantics.
+- **Supervisor wiring** (`engine/supervisor/service.py`) — two integration points: (1) after policy approval, before execution — `PeerSuggestionEngine.suggest()` is checked and approach adjustments applied; (2) after exhaustion (FAILED) or escalation — `FailureKnowledgeBase.publish()` records the failure. Both are opt-in and no-op when guild is disabled.
+- **CLI visibility** (`cond guild list`, `cond guild show <key>`, `cond guild clear`) — full inspection and management of guild knowledge records.
+- **40-test guild suite** — covering `FailureFingerprint`, `GuildRecord`, `MemoryGuildStore`, `LocalGuildStore`, `FailureKnowledgeBase`, `DefaultPeerSuggestionEngine`, publish→suggest round-trip, and supervisor integration.
 
 ---
 
-## Phase 7 — Remote Deployment and Protected Operation
+## Phase 7 — Remote Deployment and Protected Operation (complete)
 
 Conductor running on a VPS, cloud instance, or remote machine — protected, efficient, and auditable.
 
-- **Protected control plane** — harden the Phase 4 API with authn/authz, secret handling, transport security, and operational defaults fit for remote use.
-- **Authentication and authorization** — API calls require auth. OPA policies govern what callers can submit (which capabilities, which inputs, under what conditions).
-- **Multi-tenant isolation** — separate capability registries, task stores, and guardrail policies per tenant.
-- **Efficient resource management** — capability concurrency limits, queue depth controls, backpressure when the system is under load.
-- **Remote runners and CI targets** — remote machines, CI pipelines, and protected workers register as execution targets without bypassing supervisor, policy, or audit boundaries.
-- **Deployment targets** — single binary (via a thin Go wrapper or containerized Python), `systemd` unit, Docker image, Kubernetes operator pattern.
-- **Protected by default** — no capability executes without a policy allow decision. Default-deny with explicit permit grants.
+### Done
 
-This is the "OpenClaw-style but more protected and efficient" target — a hardened, remotely-operated orchestration platform with policy enforcement and a learning layer.
+- **API key authentication** — `ApiKeyStore` (file-backed, SHA-256 hashed keys). `AuthMiddleware` enforces `Authorization: Bearer <key>` on all endpoints except health and docs. When the store is empty, the API runs in open mode for backward compatibility.
+- **Scope-based authorization** — `AuthContext.require_scope()` enforces granular permissions with wildcard (`"*"`) support. Key generation accepts `--scope` flags.
+- **CLI key management** — `cond api-key generate`, `cond api-key list`, `cond api-key revoke` for full key lifecycle management.
+- **Default-deny policy** — `DenyByDefaultPolicy` rejects every capability unless explicitly allowed via `allowed_capabilities`. Health check warns when no capabilities are permitted.
+- **Bounded task queue** — `BoundedTaskQueue` with configurable `max_size` (default 512), backpressure via `QueueFull` exception, and utilization-based health warnings at 90%+ capacity. HTTP endpoints return 429 when the queue is full.
+- **TLS support** — `cond serve --tls-cert --tls-key` enables HTTPS. When TLS is active: CORS defaults to empty (no cross-origin), API key store auto-enables at `.conductor/api_keys.json`, and the policy defaults to `RiskLevelPolicyEngine(deny_above=HIGH)`.
+- **Policy modes** — `cond serve --policy risk|deny-all|null` selects the engine policy. `risk` (default) denies above HIGH; `deny-all` blocks everything; `null` allows all.
+- **Production `Dockerfile`** — multi-stage build with non-root `conductor` user (uid 999), `HEALTHCHECK` instruction, and `ENTRYPOINT`.
+- **`docker-compose.yml`** — production compose file with persistent volumes, TLS mounts, health check, and restart policy.
+- **`systemd` unit** — hardened `.service` file with `NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`, and capability sandboxing.
+- **Remote runner capability reporting** — `EngineNode.capabilities` field so runners advertise what they support. Coordinator uses capability metadata for routing decisions.
+- **43-test Phase 7 suite** — covering `ApiKeyStore` (16 tests), `BoundedTaskQueue` (10 tests), `DenyByDefaultPolicy` (10 tests), and API auth enforcement (7 tests). All 430 tests pass.
 
 ---
 

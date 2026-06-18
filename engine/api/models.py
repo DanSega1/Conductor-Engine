@@ -78,6 +78,9 @@ class RegisterEngineRequest(BaseModel):
     Used by wrapper services or node-pool managers to announce that a new
     engine is available.  The ``tags`` dict supports arbitrary labels such
     as ``{"pool": "gpu", "region": "us-east-1", "nodepool": "high-memory"}``.
+
+    The ``capabilities`` list should contain capability names the node's
+    registry supports, enabling the coordinator to route by capability.
     """
 
     name: str = Field(description="Human-readable node name")
@@ -88,6 +91,10 @@ class RegisterEngineRequest(BaseModel):
         default_factory=dict,
         description="Arbitrary key/value labels for routing and filtering",
     )
+    capabilities: list[str] = Field(
+        default_factory=list,
+        description="Capability names this runner supports",
+    )
 
 
 class EngineNodeResponse(BaseModel):
@@ -97,6 +104,7 @@ class EngineNodeResponse(BaseModel):
     name: str
     base_url: str
     tags: dict[str, str]
+    capabilities: list[str] = Field(default_factory=list)
     registered_at: str  # ISO-8601
     last_seen: str       # ISO-8601
     healthy: bool

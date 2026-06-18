@@ -4,7 +4,7 @@ A living document tracking cross-phase invariants, confirmed architectural rules
 
 Update this document whenever a phase completes, a gap is closed, or a new invariant is established.
 
-Last reviewed: 2026-05-01 (Phase 5 Slice 2 complete)
+Last reviewed: 2026-06-17 (Phase 7 complete)
 
 ---
 
@@ -23,6 +23,10 @@ These must hold at every phase. Breaking any of them is a regression, not a trad
 | 7 | Store reads return deep copies | `MemoryTaskStore` uses `model_copy(deep=True)` — callers cannot mutate stored state by accident |
 | 8 | Failure context must be durable and observable | `FailureContext` persisted in `TaskRecord.audit_trail` before retry decisions (Phase 5) |
 | 9 | ESCALATED is a terminal status — the supervisor must never transition an ESCALATED task back to RUNNING | `engine/supervisor/service.py` — once `TaskStatus.ESCALATED` is written to the store, no subsequent state machine transition may overwrite it with RUNNING |
+| 10 | Auth is enforced at middleware level, not per-route | `AuthMiddleware` in `engine/api/app.py` rejects unauthenticated requests before they reach any route handler. Per-route `AuthDep` is for consuming identity, not enforcing auth |
+| 11 | API keys are stored as hashes, never in plaintext | `ApiKeyStore._hash_key()` uses SHA-256. The raw key is returned exactly once at creation time |
+| 12 | The queue is bounded in production | `BoundedTaskQueue` prevents resource exhaustion. API returns 429 when full. `InMemoryTaskQueue` remains for backward compatibility in CLI-only workflows |
+| 13 | Default-deny is opt-in, not the default | `DenyByDefaultPolicy` is available for production deployments but `serve()` defaults to `RiskLevelPolicyEngine` for backward compatibility. The opt-in is explicit via `--policy deny-all` |
 
 ---
 

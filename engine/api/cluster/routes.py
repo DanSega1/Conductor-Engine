@@ -47,6 +47,7 @@ def _node_to_response(node: EngineNode) -> EngineNodeResponse:
         name=node.name,
         base_url=node.base_url,
         tags=node.tags,
+        capabilities=node.capabilities,
         registered_at=node.registered_at.isoformat(),
         last_seen=node.last_seen.isoformat(),
         healthy=node.healthy,
@@ -147,7 +148,12 @@ def register_engine(
     }
     ```
     """
-    node = EngineNode(name=body.name, base_url=body.base_url.rstrip("/"), tags=body.tags)
+    node = EngineNode(
+        name=body.name,
+        base_url=body.base_url.rstrip("/"),
+        tags=body.tags,
+        capabilities=body.capabilities,
+    )
     registry.register(node)
     return _node_to_response(node)
 

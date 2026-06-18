@@ -21,6 +21,7 @@ from engine.api.dependencies import AuthDep, SupervisorDep
 from engine.api.models import ApproveTaskRequest, CancelTaskRequest, PageMeta, SubmitTaskRequest
 from engine.control_plane.contracts import ControlPlaneTaskV1
 from engine.interfaces.task import TaskStatus, TaskSubmission
+from engine.runtime.queue import QueueFull
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -118,8 +119,15 @@ def submit_task(body: SubmitTaskRequest, supervisor: SupervisorDep, auth: AuthDe
     )
     try:
         task = supervisor.submit(submission)
-    except (ValueError, KeyError) as exc:
+    except ValueError as exc:
         raise HTTPException(status_code=400, detail={"code": "submit_failed", "message": str(exc)}) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail={"code": "submit_failed", "message": str(exc)}) from exc
+    except QueueFull as exc:
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "queue_full", "message": str(exc)},
+        ) from exc
     return _to_v1(task).model_dump()
 
 

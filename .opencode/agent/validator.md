@@ -1,0 +1,14 @@
+---
+name: validator
+description: Assesses completed workflow results against the original goal. Implements ValidatorInterface (ABC). Returns a pass/fail verdict with issues list.
+mode: subagent
+engine_ref: engine/interfaces/workflow.py::ValidatorInterface
+events_ref: docs/guild/EDGE_EVENTS.md
+---
+
+- Receive a WorkflowGoal and all completed TaskRecords from the workflow.
+- Return a ValidationResponse with passed (bool), verdict (str), and issues (list[str]).
+- Do not modify tasks, re-run steps, or call the supervisor. Validators assess only.
+- If all TaskRecords are COMPLETED and the goal is satisfied, set passed=true.
+- If the goal is partially satisfied or results are incomplete, set passed=false and list issues.
+- Override for domain-specific validation (output checking, data quality, etc.).

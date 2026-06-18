@@ -10,6 +10,33 @@ pip install -e .
 
 ## Commands
 
+### `cond serve`
+
+Start the HTTP control-plane API server (FastAPI / Uvicorn).
+
+```bash
+cond serve
+cond serve --host 0.0.0.0 --port 8080
+```
+
+Requires the `[api]` extra: `pip install -e ".[api]"`.
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--host` | `127.0.0.1` | Bind address |
+| `--port` | `8080` | TCP port |
+| `--policy` | `risk` | Policy engine: `risk` (deny above HIGH), `deny-all` (block everything), `null` (allow all) |
+| `--tls-cert` | — | Path to TLS certificate file (enables HTTPS) |
+| `--tls-key` | — | Path to TLS private key file |
+| `--api-key-path` | `.conductor/api_keys.json` | Path to API key store (auto-enabled when TLS is active) |
+
+When the API key store is empty, the API runs in open mode for backward compatibility.
+
+---
+
+
 ### `cond run <task-file>`
 
 Execute a task defined in a YAML or JSON file.
@@ -79,6 +106,85 @@ cond help workflow
 ```
 
 Use `man cond` for the stable CLI reference. Use `cond help` for runtime-aware topics such as loaded capabilities. Standard CLI usage help still works with `cond -h` and `cond --help`.
+
+---
+
+### `cond api-key generate`
+
+Generate a new API key for HTTP API authentication.
+
+```bash
+cond api-key generate
+cond api-key generate --actor deploy-bot --scope "*"
+cond api-key generate --actor ci-runner --scope "task:submit" --scope "task:list"
+```
+
+The raw key is printed exactly once. Keys are stored as SHA-256 hashes.
+
+**Flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--actor` | `"anonymous"` | Human-readable actor name |
+| `--scope` | `["*"]` | Authorization scopes (repeatable) |
+| `--store` | `.conductor/api_keys.json` | Path to API key store file |
+
+---
+
+### `cond api-key list`
+
+List all API keys with prefix, actor, scopes, and revocation status.
+
+```bash
+cond api-key list
+```
+
+**Output:**
+```
+ Prefix           Actor        Scopes     Revoked
+ cond_a1b2c3…     default      *          no
+ cond_d4e5f6…     deploy-bot   task:*     yes
+```
+
+---
+
+### `cond api-key revoke <prefix>`
+
+Revoke an API key by its prefix. Running servers detect the change on next request via file mtime check.
+
+```bash
+cond api-key revoke cond_a1b2c3
+```
+
+---
+
+### `cond guild list`
+
+List all failure knowledge records stored in the guild knowledge base.
+
+```bash
+cond guild list
+```
+
+---
+
+### `cond guild show <key>`
+
+Show a single guild record with full failure context and resolution hints.
+
+```bash
+cond guild show echo:TimeoutError:abc123
+```
+
+---
+
+### `cond guild clear`
+
+Remove all guild records from the store.
+
+```bash
+cond guild clear
+```
 
 ---
 

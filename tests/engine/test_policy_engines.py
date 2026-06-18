@@ -9,7 +9,12 @@ from engine.interfaces.capability import Capability, CapabilityDescriptor, Capab
 from engine.interfaces.policy import OPAInput, PolicyContext, PolicyDecisionType
 from engine.interfaces.task import RiskLevel, TaskRecord, TaskStatus, TaskSubmission
 from engine.registry.capabilities import CapabilityRegistry
-from engine.runtime.policy import NullPolicyEngine, OPAPolicyEngine, RiskLevelPolicyEngine
+from engine.runtime.policy import (
+    DenyByDefaultPolicy,
+    NullPolicyEngine,
+    OPAPolicyEngine,
+    RiskLevelPolicyEngine,
+)
 from engine.runtime.store import MemoryTaskStore
 from engine.supervisor.service import TaskSupervisor
 
@@ -430,3 +435,103 @@ class TestSupervisorPolicyIntegration:
 
         assert task.status == TaskStatus.POLICY_DENIED
         assert TrackingCapability.executed is False
+
+
+# ---------------------------------------------------------------------------
+# DenyByDefaultPolicy
+# ---------------------------------------------------------------------------
+
+
+class TestDenyByDefaultPolicy:
+    def test_deny_by_default_empty_allowed_set(self) -> None:
+        policy = DenyByDefaultPolicy()
+        task = _make_task("echo")
+        context = _make_context("echo")
+        decision = policy.evaluate(task, context)
+        assert decision.decision == PolicyDecisionType.DENY
+        assert "not in the allowed set" in (decision.reason or "")
+
+    def test_allow_explicitly_permitted_capability(self) -> None:
+        policy = DenyByDefaultPolicy(allowed_capabilities=frozenset(["echo"]))
+        task = _make_task("echo")
+        context = _make_context("echo")
+        decision = policy.evaluate(task, context)
+        assert decision.decision == PolicyDecisionType.ALLOW
+        assert "echo" in (decision.reason or "")
+
+    def test_deny_unlisted_capability(self) -> None:
+        policy = DenyByDefaultPolicy(allowed_capabilities=frozenset(["echo"]))
+        task = _make_task("filesystem")
+        context = _make_context("filesystem")
+        decision = policy.evaluate(task, context)
+        assert decision.decision == PolicyDecisionType.DENY
+        assert "filesystem" in (decision.reason or "")
+
+    def test_health_check_empty_warns(self) -> None:
+        policy = DenyByDefaultPolicy()
+        issues = policy.health_check()
+        assert len(issues) >= 1
+        assert "no capabilities are allowed" in issues[0]
+
+    def test_health_check_with_allowed_set_is_clean(self) -> None:
+        policy = DenyByDefaultPolicy(allowed_capabilities=frozenset(["echo"]))
+        assert policy.health_check() == []
+
+    def test_add_capability(self) -> None:
+        policy = DenyByDefaultPolicy()
+        policy.add_capability("echo")
+        assert "echo" in policy.allowed_capabilities
+
+        decision = policy.evaluate(_make_task("echo"), _make_context("echo"))
+        assert decision.decision == PolicyDecisionType.ALLOW
+
+    def test_remove_capability(self) -> None:
+        policy = DenyByDefaultPolicy(allowed_capabilities=frozenset(["echo", "filesystem"]))
+        policy.remove_capability("echo")
+        assert "echo" not in policy.allowed_capabilities
+        assert "filesystem" in policy.allowed_capabilities
+
+    def test_allowed_capabilities_empty_frozenset(self) -> None:
+        policy = DenyByDefaultPolicy(allowed_capabilities=frozenset())
+        task = _make_task("echo")
+        context = _make_context("echo")
+        decision = policy.evaluate(task, context)
+        assert decision.decision == PolicyDecisionType.DENY
+
+    def test_supervisor_integration_deny_all(self) -> None:
+        """A supervisor using DenyByDefaultPolicy denies all tasks by default."""
+        from engine.capabilities.echo import EchoCapability
+
+        registry = CapabilityRegistry()
+        registry.register(EchoCapability())
+
+        policy = DenyByDefaultPolicy()  # empty allowed set
+        supervisor = TaskSupervisor(
+            registry=registry,
+            store=MemoryTaskStore(),
+            policy_engine=policy,
+        )
+
+        task = supervisor.run_submission(TaskSubmission(
+            name="test", capability="echo", input={"message": "hello"},
+        ))
+        assert task.status == TaskStatus.POLICY_DENIED
+
+    def test_supervisor_integration_allow_explicit(self) -> None:
+        """When echo is explicitly allowed, tasks pass through."""
+        from engine.capabilities.echo import EchoCapability
+
+        registry = CapabilityRegistry()
+        registry.register(EchoCapability())
+
+        policy = DenyByDefaultPolicy(allowed_capabilities=frozenset(["echo"]))
+        supervisor = TaskSupervisor(
+            registry=registry,
+            store=MemoryTaskStore(),
+            policy_engine=policy,
+        )
+
+        task = supervisor.run_submission(TaskSubmission(
+            name="test", capability="echo", input={"message": "hello"},
+        ))
+        assert task.status == TaskStatus.COMPLETED

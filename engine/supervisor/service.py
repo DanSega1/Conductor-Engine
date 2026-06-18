@@ -12,6 +12,8 @@ import time
 from typing import Any
 
 from engine.guardrails.validation import validate_task_submission
+from engine.guild.knowledge import FailureKnowledgeBase
+from engine.guild.peer import DefaultPeerSuggestionEngine
 from engine.interfaces.capability import CapabilityContext
 from engine.interfaces.escalation import EscalationPolicy
 from engine.interfaces.event import EventBus, EventType, TaskEvent
@@ -72,6 +74,8 @@ class TaskSupervisor:
         policy_engine: PolicyEngine | None = None,
         retry_strategy: RetryStrategy | None = None,
         escalation_policy: EscalationPolicy | None = None,
+        guild_knowledge_base: FailureKnowledgeBase | None = None,
+        peer_suggestions: DefaultPeerSuggestionEngine | None = None,
     ) -> None:
         self.registry = registry
         self.store = store
@@ -85,6 +89,12 @@ class TaskSupervisor:
             retry_strategy if retry_strategy is not None else DefaultRetryStrategy()
         )
         self._escalation_policy: EscalationPolicy | None = escalation_policy
+        self._guild_knowledge: FailureKnowledgeBase | None = (
+            guild_knowledge_base if guild_knowledge_base is not None else None
+        )
+        self._peer_suggestions: DefaultPeerSuggestionEngine | None = (
+            peer_suggestions if peer_suggestions is not None else None
+        )
         self._execution_lock = threading.Lock()
         self._last_capability_start: dict[str, float] = {}
 
@@ -309,6 +319,14 @@ class TaskSupervisor:
             timestamp=escalated_at,
         )
 
+        # Publish failure contexts to guild knowledge base
+        if self._guild_knowledge is not None and self._guild_knowledge.enabled:
+            self._guild_knowledge.publish(
+                capability=task.capability,
+                failure_contexts=failure_history,
+                resolution_hint="Escalated — no further retries attempted",
+            )
+
     def get_task(self, task_id: str) -> TaskRecord:
         task = self.store.get(task_id)
         if task is None:
@@ -356,6 +374,30 @@ class TaskSupervisor:
             task = self._apply_policy(task, decision)
             if task.status != TaskStatus.PENDING:
                 return task
+
+        # Guild peer suggestions — check before execution for known failure patterns
+        if self._peer_suggestions is not None and self._peer_suggestions.enabled:
+            suggestions = self._peer_suggestions.suggest(
+                capability=task.capability,
+                input_data=task.input,
+            )
+            if suggestions:
+                best = suggestions[0]
+                if best.approach_adjustment:
+                    task.input.update(best.approach_adjustment)
+                self._append_audit(
+                    task,
+                    actor="guild",
+                    action="peer_suggestion_applied",
+                    metadata={
+                        "fingerprint": best.fingerprint.to_key(),
+                        "confidence": best.confidence,
+                        "resolution_hint": best.resolution_hint,
+                        "source_role": best.source_role,
+                        "source_project": best.source_project,
+                    },
+                )
+                self._save_task(task)
 
         controls = self.registry.execution_controls(task.capability)
         self._wait_for_execution_window(task.capability)
@@ -406,6 +448,12 @@ class TaskSupervisor:
                     metadata={"attempt": task.attempt},
                     timestamp=task.result.completed_at,
                 )
+                # Publish success outcome to guild knowledge base
+                if self._guild_knowledge is not None and self._guild_knowledge.enabled:
+                    self._guild_knowledge.publish_success(
+                        capability=task.capability,
+                        input_data=task.input,
+                    )
                 break
             except Exception as exc:
                 last_exc = exc
@@ -496,6 +544,14 @@ class TaskSupervisor:
                     time.sleep(decision.delay_seconds)
 
         if last_exc is not None:
+            # Publish failure contexts to guild knowledge base
+            if self._guild_knowledge is not None and self._guild_knowledge.enabled:
+                self._guild_knowledge.publish(
+                    capability=task.capability,
+                    failure_contexts=failure_history,
+                    resolution_hint="All retries exhausted — task failed",
+                )
+
             failed_at = _now()
             task.result = TaskResult(
                 success=False,

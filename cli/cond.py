@@ -17,7 +17,10 @@ from rich.table import Table
 from rich.text import Text
 import yaml
 
+from engine.api.auth import ApiKeyStore, load_api_key_store
 from engine.control_plane import build_control_plane_snapshot, build_health_components
+from engine.guild import GuildMeetingReport, GuildMeetingService
+from engine.guild.store import GuildRecord, LocalGuildStore
 from engine.interfaces.task import TaskRecord, TaskStatus, TaskSubmission
 from engine.interfaces.workflow import PlanStep, WorkflowGoal, WorkflowResult
 from engine.loader import load_capabilities
@@ -29,6 +32,7 @@ from engine.workflow.orchestrator import WorkflowOrchestrator
 
 DEFAULT_STORE = Path(".conductor/tasks.json")
 DEFAULT_CONFIG = Path("config/conductor.capabilities.yaml")
+DEFAULT_GUILD_STORE = Path(".conductor/guild.json")
 
 console = Console()
 err_console = Console(stderr=True)
@@ -401,6 +405,144 @@ def _task_detail(task: TaskRecord) -> None:
     console.print(Panel(table, title="audit trail", border_style="blue"))
 
 
+def _guild_list_table(guild_store: LocalGuildStore) -> None:
+    records = guild_store.list()
+    if not records:
+        console.print(Panel("No guild records found.", border_style="yellow"))
+        return
+
+    summary = Table.grid(padding=(0, 2))
+    summary.add_column(min_width=10)
+    summary.add_column()
+    summary.add_row(Text("total records", style="bold"), str(len(records)))
+    console.print(Panel(summary, title="guild knowledge", border_style="blue"))
+
+    table = Table(show_header=True, header_style="bold", box=None, pad_edge=True)
+    table.add_column("Capability")
+    table.add_column("Error Type")
+    table.add_column("Input FP")
+    table.add_column("Role")
+    table.add_column("Failures")
+    table.add_column("Hint")
+
+    for record in records:
+        table.add_row(
+            record.fingerprint.capability,
+            record.fingerprint.error_type,
+            _task_id_display(record.fingerprint.input_fingerprint),
+            record.role or "-",
+            str(record.failure_count),
+            _format_output(record.resolution_hint, max_length=60) or "-",
+        )
+    console.print(table)
+
+
+def _guild_detail(record: GuildRecord) -> None:
+    grid = Table.grid(padding=(0, 2))
+    grid.add_column(min_width=14)
+    grid.add_column()
+
+    grid.add_row(Text("capability", style="bold"), record.fingerprint.capability)
+    grid.add_row(Text("error type", style="bold"), record.fingerprint.error_type)
+    grid.add_row(Text("input fp", style="bold"), record.fingerprint.input_fingerprint)
+    grid.add_row(Text("role", style="bold"), record.role or "-")
+    grid.add_row(Text("project", style="bold"), record.project or "-")
+    grid.add_row(Text("failures", style="bold"), str(record.failure_count))
+    grid.add_row(Text("successes", style="bold"), str(record.success_count))
+    grid.add_row(Text("created", style="bold"), _format_timestamp(record.created_at))
+    grid.add_row(Text("updated", style="bold"), _format_timestamp(record.updated_at))
+
+    console.print(Panel(grid, title="guild record", border_style="blue"))
+
+    if record.resolution_hint:
+        console.print(Panel(record.resolution_hint, title="resolution hint", border_style="green"))
+    if record.approach_adjustment:
+        console.print(Panel(_format_block(record.approach_adjustment), title="approach adjustment", border_style="cyan"))
+    if record.metadata:
+        console.print(Panel(_format_block(record.metadata), title="metadata", border_style="blue"))
+
+
+def _resolve_guild_record(guild_store: LocalGuildStore, fingerprint_prefix: str) -> GuildRecord:
+    prefixes = [
+        record
+        for record in guild_store.list()
+        if record.fingerprint.to_key().startswith(fingerprint_prefix)
+    ]
+    if not prefixes:
+        raise ValueError(f"Guild record '{fingerprint_prefix}' was not found")
+    if len(prefixes) > 1:
+        raise ValueError(
+            f"Fingerprint prefix '{fingerprint_prefix}' is ambiguous; provide more characters"
+        )
+    return prefixes[0]
+
+
+def _guild_meeting_report(report: GuildMeetingReport) -> None:
+    """Render a guild meeting report to the console."""
+    border = "green" if not any(i.severity == "warning" for i in report.cross_role_insights) else "yellow"
+    console.print(Panel(
+        report.summary,
+        title=f"guild meeting — {report.meeting_id}",
+        border_style=border,
+    ))
+
+    if report.capability_profiles:
+        table = Table(show_header=True, header_style="bold", box=None, pad_edge=True)
+        table.add_column("Capability")
+        table.add_column("Successes")
+        table.add_column("Failures")
+        table.add_column("Error Types")
+        table.add_column("Roles")
+
+        for profile in report.capability_profiles:
+            table.add_row(
+                profile.capability,
+                str(profile.total_successes),
+                str(profile.total_failures),
+                ", ".join(profile.distinct_error_types[:3]) or "-",
+                ", ".join(profile.roles[:3]) or "-",
+            )
+        console.print(Panel(table, title="capability profiles", border_style="blue"))
+
+    if report.role_digests:
+        for digest in report.role_digests:
+            grid = Table.grid(padding=(0, 2))
+            grid.add_column(min_width=10)
+            grid.add_column()
+            grid.add_row(Text("role", style="bold"), digest.role)
+            grid.add_row(Text("records", style="bold"), str(digest.total_records))
+            grid.add_row(
+                Text("capabilities", style="bold"),
+                ", ".join(digest.capabilities_encountered[:5]) or "-",
+            )
+            if digest.top_failure_patterns:
+                failures_summary = "; ".join(
+                    f"{p['capability']}:{p['error_type']} ({p['count']})"
+                    for p in digest.top_failure_patterns[:3]
+                )
+                grid.add_row(Text("top failures", style="bold"), failures_summary)
+            if digest.top_success_patterns:
+                successes_summary = "; ".join(
+                    f"{p['capability']} ({p['count']}x)"
+                    for p in digest.top_success_patterns[:3]
+                )
+                grid.add_row(Text("top successes", style="bold"), successes_summary)
+            console.print(Panel(grid, title=f"@{digest.role}", border_style="cyan"))
+
+    if report.cross_role_insights:
+        for insight in report.cross_role_insights:
+            style = "red" if insight.severity == "critical" else ("yellow" if insight.severity == "warning" else "green")
+            severity_label = Text(insight.severity.upper(), style=f"bold {style}")
+            grid = Table.grid(padding=(0, 2))
+            grid.add_column(min_width=12)
+            grid.add_column()
+            grid.add_row(Text("severity", style="bold"), severity_label)
+            grid.add_row(Text("insight", style="bold"), insight.description)
+            grid.add_row(Text("capabilities", style="bold"), ", ".join(insight.capabilities) or "-")
+            grid.add_row(Text("roles", style="bold"), ", ".join(insight.roles) or "-")
+            console.print(Panel(grid, title="cross-role insight", border_style=style))
+
+
 def _component_issues(component: object) -> list[str]:
     checker = getattr(component, "health_check", None)
     if checker is None:
@@ -466,6 +608,90 @@ def _snapshot_output(
         health_components=_health_components(registry, store, supervisor),
     )
     console.file.write(snapshot.model_dump_json(indent=2) + "\n")
+
+
+# ---------------------------------------------------------------------------
+# API key management handlers
+# ---------------------------------------------------------------------------
+
+DEFAULT_API_KEY_STORE = Path(".conductor/api_keys.json")
+
+
+def _api_key_handler(args: argparse.Namespace) -> int:
+    """Dispatch api-key subcommands."""
+    store_path = args.store if hasattr(args, "store") and args.store else str(DEFAULT_API_KEY_STORE)
+    store = load_api_key_store(store_path)
+
+    if args.api_key_command == "generate":
+        return _api_key_generate(store, args)
+    if args.api_key_command == "list":
+        return _api_key_list(store)
+    if args.api_key_command == "revoke":
+        return _api_key_revoke(store, args)
+    err_console.print("Unsupported api-key command")
+    return 2
+
+
+def _api_key_generate(store: ApiKeyStore, args: argparse.Namespace) -> int:
+    scopes = args.scopes if args.scopes else None
+    raw, entry = store.generate(actor=args.actor, scopes=scopes)
+    console.print()
+    console.print(Panel(
+        f"[bold green]New API key created[/bold green]\n\n"
+        f"[bold]Key:[/bold] [yellow]{raw}[/yellow]\n"
+        f"[dim]Store at:[/dim] {store._path}\n\n"
+        "[bold red]⚠  This is the only time the raw key is shown.[/bold red]\n"
+        "[bold red]   Store it securely — it cannot be recovered later.[/bold red]",
+        border_style="green",
+    ))
+    _print_key_entry(entry)
+    return 0
+
+
+def _api_key_list(store: ApiKeyStore) -> int:
+    entries = store.list_keys()
+    if not entries:
+        console.print(Panel("No API keys configured.", border_style="yellow"))
+        return 0
+
+    table = Table(title="API Keys")
+    table.add_column("Prefix", style="cyan")
+    table.add_column("Actor", style="green")
+    table.add_column("Scopes")
+    table.add_column("Created")
+    table.add_column("Status")
+
+    for e in entries:
+        status = "[red]Revoked[/red]" if e.revoked else "[green]Active[/green]"
+        scopes = ", ".join(e.scopes)
+        created = e.created_at[:10] if e.created_at else "?"
+        table.add_row(e.prefix, e.actor, scopes, created, status)
+
+    console.print(table)
+    return 0
+
+
+def _api_key_revoke(store: ApiKeyStore, args: argparse.Namespace) -> int:
+    entry = store.find_by_prefix(args.prefix)
+    if entry is None:
+        err_console.print(f"No API key found with prefix '{args.prefix}'")
+        return 1
+    store.revoke(entry.key_hash)
+    console.print(f"[yellow]Revoked[/yellow] API key '{args.prefix}' (actor: {entry.actor})")
+    return 0
+
+
+def _print_key_entry(entry) -> None:
+    from rich.table import Table
+    t = Table("Field", "Value")
+    t.add_row("Prefix", entry.prefix)
+    t.add_row("Actor", entry.actor)
+    t.add_row("Scopes", ", ".join(entry.scopes))
+    t.add_row("Created", entry.created_at)
+    console.print(t)
+
+
+# ---------------------------------------------------------------------------
 
 
 def _resolve_task(supervisor: TaskSupervisor, task_id_or_prefix: str) -> TaskRecord:
@@ -644,6 +870,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to the capability config YAML file.",
     )
+    parser.add_argument(
+        "--guild-store",
+        default=str(DEFAULT_GUILD_STORE),
+        help="Path to the guild knowledge JSON file.",
+    )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -703,6 +934,75 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["debug", "info", "warning", "error"],
         help="Uvicorn log level (default: info)",
     )
+    serve_parser.add_argument(
+        "--api-key-path",
+        default=None,
+        help="Path to the API key store JSON file. When provided, API auth is enforced.",
+    )
+    serve_parser.add_argument(
+        "--tls-cert",
+        default=None,
+        help="Path to TLS certificate file. Enables HTTPS when set with --tls-key.",
+    )
+    serve_parser.add_argument(
+        "--tls-key",
+        default=None,
+        help="Path to TLS private key file. Required with --tls-cert.",
+    )
+    serve_parser.add_argument(
+        "--policy",
+        default=None,
+        choices=["risk", "deny-all", "null"],
+        help="Policy mode. risk=deny above HIGH (default), deny-all=deny everything, null=allow all.",
+    )
+
+    guild_parser = subparsers.add_parser("guild", help="Inspect and manage guild knowledge.")
+    guild_subparsers = guild_parser.add_subparsers(dest="guild_command", required=True)
+
+    guild_list = guild_subparsers.add_parser("list", help="List guild knowledge records.")
+    guild_list.add_argument("--capability", default=None, help="Filter by capability.")
+    guild_list.add_argument("--error-type", default=None, help="Filter by error type.")
+    guild_list.add_argument("--role", default=None, help="Filter by agent role.")
+    guild_list.add_argument("--limit", type=_positive_int, default=None, help="Maximum records to show.")
+    guild_list.add_argument("--offset", type=_non_negative_int, default=0, help="Records to skip.")
+
+    guild_show = guild_subparsers.add_parser("show", help="Show one guild record in detail.")
+    guild_show.add_argument("fingerprint", help="Full fingerprint key or unique prefix.")
+
+    guild_subparsers.add_parser("clear", help="Remove all guild records.")
+
+    guild_meet = guild_subparsers.add_parser("meet", help="Hold a guild meeting — consolidate knowledge across roles.")
+    guild_meet.add_argument("--guild-store", default=None, help="Path to the guild knowledge JSON file.")
+
+    # ------------------------------------------------------------------
+    # API key management
+    # ------------------------------------------------------------------
+    api_key_parser = subparsers.add_parser("api-key", help="Manage API keys for the HTTP API server.")
+    api_key_subparsers = api_key_parser.add_subparsers(dest="api_key_command", required=True)
+
+    api_key_gen = api_key_subparsers.add_parser("generate", help="Create a new API key.")
+    api_key_gen.add_argument("--actor", default="cli", help="Actor name associated with the key.")
+    api_key_gen.add_argument(
+        "--scope", action="append", default=None, dest="scopes",
+        help="Scope to grant (repeatable, eg. --scope task:write). Default: wildcard.",
+    )
+    api_key_gen.add_argument(
+        "--store", default=None,
+        help="Path to the API key store file (default: .conductor/api_keys.json).",
+    )
+
+    api_key_list = api_key_subparsers.add_parser("list", help="List all API keys.")
+    api_key_list.add_argument(
+        "--store", default=None,
+        help="Path to the API key store file (default: .conductor/api_keys.json).",
+    )
+
+    api_key_revoke = api_key_subparsers.add_parser("revoke", help="Revoke an API key by its prefix.")
+    api_key_revoke.add_argument("prefix", help="Key prefix (e.g. cond_a1b2c3d4) to revoke.")
+    api_key_revoke.add_argument(
+        "--store", default=None,
+        help="Path to the API key store file (default: .conductor/api_keys.json).",
+    )
 
     help_parser = subparsers.add_parser("help", help="Show offline help topics.")
     help_parser.add_argument("topic", nargs="?", help="Optional command or capability topic.")
@@ -730,9 +1030,17 @@ def main(argv: list[str] | None = None) -> int:
                 port=args.port,
                 store_path=args.store,
                 capabilities_path=args.config,
+                api_key_path=args.api_key_path,
                 log_level=args.log_level,
+                tls_cert=args.tls_cert,
+                tls_key=args.tls_key,
+                policy=args.policy,
             )
             return 0
+
+        # api-key manages its own store — no engine needed
+        if args.command == "api-key":
+            return _api_key_handler(args)
 
         workdir = Path.cwd()
         registry = _resolve_registry(args.config, workdir)
@@ -806,6 +1114,29 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.command == "help":
             return _render_help(args.topic, registry)
+
+        if args.command == "guild":
+            guild_store = LocalGuildStore(args.guild_store or str(DEFAULT_GUILD_STORE))
+            if args.guild_command == "list":
+                _guild_list_table(guild_store)
+                return 0
+            if args.guild_command == "show":
+                record = _resolve_guild_record(guild_store, args.fingerprint)
+                _guild_detail(record)
+                return 0
+            if args.guild_command == "clear":
+                guild_store.clear()
+                console.print("All guild records cleared.")
+                return 0
+            if args.guild_command == "meet":
+                from engine.guild import GuildConfig
+                service = GuildMeetingService(store=guild_store, config=GuildConfig(enabled=True))
+                report = service.hold_meeting()
+                if report is None or report.total_records == 0:
+                    console.print(Panel("No guild records to review. The guild is empty.", border_style="yellow"))
+                    return 0
+                _guild_meeting_report(report)
+                return 0
 
         parser.error("Unsupported command")
         return 2

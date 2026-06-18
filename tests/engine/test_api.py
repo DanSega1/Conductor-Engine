@@ -24,7 +24,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 import pytest
 
-from engine.api import SSEEventBus, create_api_app
+from engine.api import ApiKeyStore, SSEEventBus, create_api_app
 from engine.capabilities.echo import EchoCapability
 from engine.registry.capabilities import CapabilityRegistry
 from engine.runtime.store import MemoryTaskStore
@@ -519,3 +519,132 @@ class TestClusterRoutes:
         assert "/v1/health" in paths
         assert "/v1/events" in paths
         assert "/v1/engines" in paths
+
+
+# ---------------------------------------------------------------------------
+# Auth: API key enforcement via ApiKeyStore
+# ---------------------------------------------------------------------------
+
+
+class TestAuthEnforcement:
+    """Tests that the API key auth dependency works end-to-end.
+
+    The key insight is that the ApiKeyStore is created with keys *before*
+    the TestClient/FastAPI app is created, so app.state.api_key_store
+    already has keys when the first request arrives.
+    """
+
+    @pytest.fixture()
+    def registry(self) -> CapabilityRegistry:
+        reg = CapabilityRegistry()
+        reg.register(EchoCapability())
+        return reg
+
+    @pytest.fixture()
+    def event_bus(self) -> SSEEventBus:
+        return SSEEventBus()
+
+    @pytest.fixture()
+    def supervisor(self, registry: CapabilityRegistry, event_bus: SSEEventBus) -> TaskSupervisor:
+        store = MemoryTaskStore()
+        return TaskSupervisor(registry=registry, store=store, event_bus=event_bus)
+
+    @pytest.fixture()
+    def key_store_with_keys(self) -> ApiKeyStore:
+        """An ApiKeyStore with one key pre-generated."""
+        from pathlib import Path
+        import tempfile
+        store = ApiKeyStore(Path(tempfile.mktemp(suffix=".json")))
+        store.generate(actor="test-bot", scopes=["*"])
+        return store
+
+    @pytest.fixture()
+    def client_secured(self, supervisor, registry, event_bus, key_store_with_keys) -> TestClient:
+        """TestClient with auth enforcement enabled (keys exist)."""
+        store = supervisor.store
+        app = create_api_app(
+            supervisor=supervisor,
+            registry=registry,
+            store=store,
+            event_bus=event_bus,
+            api_key_store=key_store_with_keys,
+        )
+        return TestClient(app)
+
+    @pytest.fixture()
+    def key_store_no_keys(self) -> ApiKeyStore:
+        """An ApiKeyStore with zero keys (auth disabled)."""
+        from pathlib import Path
+        import tempfile
+        return ApiKeyStore(Path(tempfile.mktemp(suffix=".json")))
+
+    @pytest.fixture()
+    def client_no_keys(self, supervisor, registry, event_bus, key_store_no_keys) -> TestClient:
+        """TestClient with empty API key store (open access)."""
+        store = supervisor.store
+        app = create_api_app(
+            supervisor=supervisor,
+            registry=registry,
+            store=store,
+            event_bus=event_bus,
+            api_key_store=key_store_no_keys,
+        )
+        return TestClient(app)
+
+    def test_no_auth_when_store_empty(self, client_no_keys) -> None:
+        """Empty ApiKeyStore means endpoints are open."""
+        resp = client_no_keys.get("/v1/tasks")
+        assert resp.status_code == 200
+
+    def test_401_when_no_auth_header(self, client_secured) -> None:
+        resp = client_secured.get("/v1/tasks")
+        assert resp.status_code == 401
+        body = resp.json()
+        assert body["code"] == "unauthorized"
+
+    def test_401_with_bogus_key(self, client_secured) -> None:
+        resp = client_secured.get(
+            "/v1/tasks",
+            headers={"Authorization": "Bearer cond_bogus_00000000000000000000000000000000"},
+        )
+        assert resp.status_code == 401
+        body = resp.json()
+        assert body["code"] == "unauthorized"
+
+    def test_valid_key_allows_access(self, client_secured, key_store_with_keys) -> None:
+        # We need the raw key — retrieve it from the store
+        entries = key_store_with_keys.list_keys()
+        assert len(entries) == 1
+        # Since we can't recover the raw key from hashed store, generate a new one
+        raw, _ = key_store_with_keys.generate(actor="test-bot-2")
+        resp = client_secured.get(
+            "/v1/tasks",
+            headers={"Authorization": f"Bearer {raw}"},
+        )
+        assert resp.status_code == 200
+
+    def test_revoked_key_denied(self, client_secured, key_store_with_keys) -> None:
+        raw, entry = key_store_with_keys.generate(actor="test-bot")
+        key_store_with_keys.revoke(entry.key_hash)
+        resp = client_secured.get(
+            "/v1/tasks",
+            headers={"Authorization": f"Bearer {raw}"},
+        )
+        assert resp.status_code == 401
+
+    def test_task_submit_actor_from_auth(self, client_secured, key_store_with_keys) -> None:
+        """Submitted task metadata includes the authenticated actor."""
+        raw, _ = key_store_with_keys.generate(actor="deploy-bot")
+        resp = client_secured.post(
+            "/v1/tasks",
+            json={"name": "test", "capability": "echo", "input": {"message": "hi"}},
+            headers={"Authorization": f"Bearer {raw}"},
+        )
+        assert resp.status_code == 202
+        data = resp.json()
+        assert "deploy-bot" in str(data)
+
+    def test_auth_does_not_apply_to_health(self, client_secured) -> None:
+        """The health endpoint is deliberately unprotected."""
+        resp = client_secured.get("/v1/health")
+        assert resp.status_code == 200

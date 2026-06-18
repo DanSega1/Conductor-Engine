@@ -9,6 +9,48 @@ import httpx
 from engine.interfaces.policy import OPAInput, PolicyContext, PolicyDecision, PolicyDecisionType
 from engine.interfaces.task import RiskLevel, TaskRecord
 
+
+class DenyByDefaultPolicy:
+    """Policy engine that denies every capability unless explicitly allowed.
+
+    This is the most restrictive policy — it enforces a default-deny
+    posture.  Only capabilities in *allowed_capabilities* are permitted.
+    All others receive an automatic DENY.
+
+    Suitable for production deployments where every capability must be
+    explicitly granted.
+    """
+
+    def __init__(
+        self,
+        allowed_capabilities: frozenset[str] | None = None,
+    ) -> None:
+        self.allowed_capabilities = allowed_capabilities or frozenset()
+
+    def evaluate(self, task, context) -> PolicyDecision:
+        if context.capability.name in self.allowed_capabilities:
+            return PolicyDecision(
+                decision=PolicyDecisionType.ALLOW,
+                reason=f"Capability '{context.capability.name}' is in the allowed set",
+            )
+        return PolicyDecision(
+            decision=PolicyDecisionType.DENY,
+            reason=f"Capability '{context.capability.name}' is not in the allowed set. "
+                   f"Allowed: {', '.join(sorted(self.allowed_capabilities)) or '(none)'}",
+        )
+
+    def health_check(self) -> list[str]:
+        if not self.allowed_capabilities:
+            return ["deny-default: no capabilities are allowed — every task will be denied"]
+        return []
+
+    def add_capability(self, name: str) -> None:
+        self.allowed_capabilities = frozenset([*self.allowed_capabilities, name])
+
+    def remove_capability(self, name: str) -> None:
+        self.allowed_capabilities = frozenset(n for n in self.allowed_capabilities if n != name)
+
+
 _RISK_ORDER: dict[RiskLevel, int] = {
     RiskLevel.LOW: 0,
     RiskLevel.MEDIUM: 1,

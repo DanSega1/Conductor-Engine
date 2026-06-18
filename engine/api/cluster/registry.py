@@ -49,6 +49,10 @@ class EngineNode(BaseModel):
     name: str
     base_url: str = Field(description="Base HTTP URL, e.g. http://10.0.0.5:8080")
     tags: dict[str, str] = Field(default_factory=dict)
+    capabilities: list[str] = Field(
+        default_factory=list,
+        description="Capability names this runner supports (from its registry).",
+    )
     registered_at: datetime = Field(default_factory=_now)
     last_seen: datetime = Field(default_factory=_now)
     healthy: bool = True
@@ -56,6 +60,10 @@ class EngineNode(BaseModel):
     def matches_tags(self, required: dict[str, str]) -> bool:
         """Return True if this node satisfies all required tag constraints."""
         return all(self.tags.get(k) == v for k, v in required.items())
+
+    def has_capability(self, name: str) -> bool:
+        """Return True if this node advertises support for *name*."""
+        return name in self.capabilities
 
 
 class EngineRegistry:

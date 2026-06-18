@@ -1,0 +1,51 @@
+[Unit]
+Description=Conductor Engine — orchestration runtime API server
+Documentation=https://github.com/DanSega1/Conductor-Engine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=conductor
+Group=conductor
+WorkingDirectory=/var/lib/conductor
+
+# Paths
+Environment="CONDUCTOR_STORE=/var/lib/conductor/tasks.json"
+Environment="CONDUCTOR_CONFIG=/etc/conductor/capabilities.yaml"
+Environment="CONDUCTOR_API_KEYS=/var/lib/conductor/api_keys.json"
+
+# Exec
+ExecStart=/usr/local/bin/cond serve \
+    --host 0.0.0.0 \
+    --port 8080 \
+    --store "${CONDUCTOR_STORE}" \
+    --config "${CONDUCTOR_CONFIG}" \
+    --api-key-path "${CONDUCTOR_API_KEYS}" \
+    --tls-cert /etc/conductor/tls/cert.pem \
+    --tls-key /etc/conductor/tls/key.pem \
+    --policy risk \
+    --log-level info
+
+# Security hardening
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/conductor
+PrivateTmp=true
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Restart behaviour
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Install]
+WantedBy=multi-user.target

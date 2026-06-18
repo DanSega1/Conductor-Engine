@@ -33,10 +33,10 @@ This project is AI-enhanced. A significant portion of the code, tests, and docum
 | [Phase 3: Production Hardening](docs/conductor/roadmap.md#phase-3--production-hardening-complete) | ✅ Complete | Observability, policies, pluggable stores, approvals, and parallel workflow execution. |
 | [Phase 4: Control Plane + TUI](docs/conductor/roadmap.md#phase-4--control-plane--tui-wip) | ✅ Complete | Versioned HTTP control-plane API (`engine/api/`), SSE event stream, multi-engine cluster routing, and `cond serve`. |
 | [Phase 5: Autonomous Operation](docs/conductor/roadmap.md#phase-5--autonomous-operation-complete) | ✅ Complete | Self-enforcing policy, behavioral retry, cron/webhook triggers, sandboxed execution, require_approval gate, rich audit trail, and integration test suite. |
-| [Phase 6: Guild Layer](docs/conductor/roadmap.md#phase-6--guild-layer) | Planned | Cross-project failure learning and role-scoped knowledge sharing. |
-| [Phase 7: Remote Deployment and Protected Operation](docs/conductor/roadmap.md#phase-7--remote-deployment-and-protected-operation) | Planned | Protected remote operation, multi-tenant isolation, remote runners, and hardened deployment targets. |
+| [Phase 6: Guild Layer](docs/conductor/roadmap.md#phase-6--guild-layer-complete) | ✅ Complete | Cross-project failure learning, role-scoped knowledge sharing, peer suggestions before execution, and structured failure knowledge base. |
+| [Phase 7: Remote Deployment and Protected Operation](docs/conductor/roadmap.md#phase-7--remote-deployment-and-protected-operation-complete) | ✅ Complete | API key auth, default-deny policy, bounded queue, TLS, systemd unit, hardened Docker, remote runner capability reporting. |
 
-> **Next:** Phase 6 — Guild Layer (cross-project failure learning and role-scoped knowledge sharing).
+> **Next:** Phase 8 — TBD.
 
 See the [full roadmap](docs/conductor/roadmap.md) for phase scope, rationale, and backlog details.
 

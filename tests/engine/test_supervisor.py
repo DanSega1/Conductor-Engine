@@ -11,6 +11,12 @@ import pytest
 
 from engine.capabilities.echo import EchoCapability
 from engine.capabilities.filesystem import FilesystemCapability
+from engine.guild import (
+    DefaultPeerSuggestionEngine,
+    FailureKnowledgeBase,
+    GuildConfig,
+    MemoryGuildStore,
+)
 from engine.interfaces.capability import (
     Capability,
     CapabilityDescriptor,
@@ -594,3 +600,285 @@ def test_supervisor_default_retry_behavior_unchanged(tmp_path: Path) -> None:
     assert task.status == TaskStatus.COMPLETED
     assert capability.call_count == 3
     assert task.attempt == 3
+
+
+# =========================================================================
+# Guild integration tests
+# =========================================================================
+
+
+class _FailsWithValueError(Capability):
+    """A test capability that always raises ValueError."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.call_count = 0
+
+    @property
+    def descriptor(self) -> CapabilityDescriptor:
+        return CapabilityDescriptor(
+            name="guild_failer",
+            description="Always fails with ValueError for guild tests.",
+            risk_level=RiskLevel.LOW,
+        )
+
+    def execute(self, payload: BaseModel | dict[str, Any], context) -> CapabilityResult:
+        self.call_count += 1
+        raise ValueError("Intentional failure for guild test")
+
+
+def test_guild_knowledge_published_on_failure_exhaustion(tmp_path: Path) -> None:
+    """When a task exhausts retries, the failure is published to the guild."""
+    guild_store = MemoryGuildStore()
+    kb = FailureKnowledgeBase(
+        store=guild_store,
+        config=GuildConfig(enabled=True, project_name="test"),
+    )
+    registry = CapabilityRegistry()
+    capability = _FailsWithValueError()
+    registry.register(capability)
+
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+        guild_knowledge_base=kb,
+    )
+
+    task = supervisor.run_submission(
+        TaskSubmission(
+            name="Guild fail test",
+            capability="guild_failer",
+            max_retries=0,  # No retries — fails immediately
+        )
+    )
+
+    assert task.status == TaskStatus.FAILED
+    # Guild should have one record
+    records = guild_store.list()
+    assert len(records) == 1
+    assert records[0].fingerprint.capability == "guild_failer"
+    assert records[0].fingerprint.error_type == "ValueError"
+    assert records[0].project == "test"
+    assert records[0].failure_count >= 1
+
+
+def test_guild_knowledge_published_on_escalation(tmp_path: Path) -> None:
+    """When a task escalates, the failure is published to the guild."""
+    guild_store = MemoryGuildStore()
+    kb = FailureKnowledgeBase(
+        store=guild_store,
+        config=GuildConfig(enabled=True),
+    )
+    registry = CapabilityRegistry()
+    capability = _FailsWithValueError()
+    registry.register(capability)
+
+    from engine.runtime.retry import DefaultRetryStrategy
+
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+        retry_strategy=DefaultRetryStrategy(enable_escalation=True),
+        guild_knowledge_base=kb,
+    )
+
+    task = supervisor.run_submission(
+        TaskSubmission(
+            name="Guild escalate test",
+            capability="guild_failer",
+            max_retries=0,  # immediate exhaustion → escalate
+        )
+    )
+
+    assert task.status == TaskStatus.ESCALATED
+    records = guild_store.list()
+    assert len(records) == 1
+    assert records[0].fingerprint.capability == "guild_failer"
+
+
+def test_peer_suggestion_applied_before_execution(tmp_path: Path) -> None:
+    """When a guild record exists, peer suggestions should apply approach adjustments."""
+    guild_store = MemoryGuildStore()
+    # Seed a guild record with an approach adjustment
+    from engine.guild import FailureFingerprint, GuildRecord
+
+    fp = FailureFingerprint(
+        capability="echo",
+        error_type="ValueError",
+        input_fingerprint="abc",
+    )
+    guild_store.save(GuildRecord(
+        fingerprint=fp,
+        approach_adjustment={"strict_mode": True},
+        failure_count=3,
+    ))
+
+    peer = DefaultPeerSuggestionEngine(
+        store=guild_store,
+        config=GuildConfig(enabled=True),
+    )
+    registry = CapabilityRegistry()
+    registry.register(EchoCapability())
+
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+        peer_suggestions=peer,
+    )
+
+    # Submit an echo task — peer suggestions should apply the adjustment
+    task = supervisor.run_submission(
+        TaskSubmission(
+            name="Echo with peer suggestion",
+            capability="echo",
+            input={"message": "hello"},
+        )
+    )
+
+    assert task.status == TaskStatus.COMPLETED
+    # Check the audit trail for the peer suggestion entry
+    audit_entries = [e for e in task.audit_trail if e.actor == "guild"]
+    assert len(audit_entries) == 1
+    assert audit_entries[0].action == "peer_suggestion_applied"
+    assert audit_entries[0].metadata.get("fingerprint") == fp.to_key()
+
+
+def test_guild_disabled_no_records_published(tmp_path: Path) -> None:
+    """When guild is disabled (default), no records should be published."""
+    guild_store = MemoryGuildStore()
+    kb = FailureKnowledgeBase(store=guild_store)  # enabled=False by default
+    assert kb.enabled is False
+
+    registry = CapabilityRegistry()
+    capability = _FailsWithValueError()
+    registry.register(capability)
+
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+        guild_knowledge_base=kb,
+    )
+
+    task = supervisor.run_submission(
+        TaskSubmission(
+            name="Guild disabled test",
+            capability="guild_failer",
+            max_retries=0,
+        )
+    )
+
+    assert task.status == TaskStatus.FAILED
+    assert guild_store.list() == []
+
+
+def test_guild_disabled_no_peer_suggestions(tmp_path: Path) -> None:
+    """When guild is disabled, peer suggestions are empty."""
+    guild_store = MemoryGuildStore()
+    from engine.guild import FailureFingerprint, GuildRecord
+
+    fp = FailureFingerprint(capability="echo", error_type="E", input_fingerprint="x")
+    guild_store.save(GuildRecord(fingerprint=fp))
+
+    peer = DefaultPeerSuggestionEngine(store=guild_store)  # enabled=False by default
+    assert peer.enabled is False
+
+    registry = CapabilityRegistry()
+    registry.register(EchoCapability())
+
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+        peer_suggestions=peer,
+    )
+
+    task = supervisor.run_submission(
+        TaskSubmission(
+            name="Echo no suggestion",
+            capability="echo",
+            input={"message": "hello"},
+        )
+    )
+
+    assert task.status == TaskStatus.COMPLETED
+    # No guild audit entries
+    audit_entries = [e for e in task.audit_trail if e.actor == "guild"]
+    assert len(audit_entries) == 0
+
+
+def test_guild_success_published_on_completion(tmp_path: Path) -> None:
+    """When a task succeeds, the guild records the successful outcome."""
+    guild_store = MemoryGuildStore()
+    kb = FailureKnowledgeBase(
+        store=guild_store,
+        config=GuildConfig(enabled=True, project_name="test"),
+    )
+    registry = CapabilityRegistry()
+    registry.register(EchoCapability())
+
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+        guild_knowledge_base=kb,
+    )
+
+    task = supervisor.run_submission(
+        TaskSubmission(
+            name="Guild success test",
+            capability="echo",
+            input={"message": "hello"},
+        )
+    )
+
+    assert task.status == TaskStatus.COMPLETED
+    # Guild should have one success record
+    records = guild_store.list()
+    assert len(records) == 1
+    assert records[0].fingerprint.capability == "echo"
+    assert records[0].fingerprint.error_type == "_success"
+    assert records[0].success_count == 1
+    assert records[0].project == "test"
+
+
+def test_guild_success_and_failure_both_recorded(tmp_path: Path) -> None:
+    """When tasks succeed and fail, the guild records both sides of the story."""
+    guild_store = MemoryGuildStore()
+    kb = FailureKnowledgeBase(
+        store=guild_store,
+        config=GuildConfig(enabled=True),
+    )
+    registry = CapabilityRegistry()
+    registry.register(EchoCapability())
+
+    supervisor = TaskSupervisor(
+        registry=registry,
+        store=MemoryTaskStore(),
+        workdir=tmp_path,
+        guild_knowledge_base=kb,
+    )
+
+    # Run a successful task
+    success = supervisor.run_submission(
+        TaskSubmission(name="success", capability="echo", input={"message": "ok"}),
+    )
+    assert success.status == TaskStatus.COMPLETED
+
+    # Run a failing task
+    fail_cap = _FailsWithValueError()
+    registry.register(fail_cap)
+    failing = supervisor.run_submission(
+        TaskSubmission(name="fail", capability="guild_failer", max_retries=0),
+    )
+    assert failing.status == TaskStatus.FAILED
+
+    # Guild should have both records
+    records = guild_store.list()
+    assert len(records) == 2
+    error_types = {r.fingerprint.error_type for r in records}
+    assert "_success" in error_types
+    assert "ValueError" in error_types

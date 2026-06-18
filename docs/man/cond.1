@@ -1,4 +1,4 @@
-.TH COND 1 "April 2026" "Conductor Engine" "User Commands"
+.TH COND 1 "June 2026" "Conductor Engine" "User Commands"
 .SH NAME
 cond \- minimal orchestration runtime CLI
 .SH SYNOPSIS
@@ -8,7 +8,8 @@ cond \- minimal orchestration runtime CLI
 .SH DESCRIPTION
 \fBcond\fR is the command-line interface for Conductor Engine.
 It runs tasks, executes workflows, lists capabilities, inspects local task history,
-and surfaces component health checks.
+surfaces component health checks, manages API keys, and serves the HTTP control-plane
+API for remote access.
 .PP
 Use \fBman cond\fR for the stable command reference.
 Use \fBcond help\fR for runtime-aware help, including capability topics derived from the currently loaded registry.
@@ -27,6 +28,23 @@ Defaults to \fB.conductor/tasks.json\fR.
 .B \-\-config \fIPATH\fR
 Path to a capability configuration YAML file.
 .SH COMMANDS
+.TP
+.B cond serve
+Start the HTTP control-plane API server (FastAPI / Uvicorn).
+Requires the \fB[api]\fR extra.
+Flags:
+.B \-\-host
+(default 127.0.0.1),
+.B \-\-port
+(default 8080),
+.B \-\-policy
+(\fBrisk\fR|\fBdeny\-all\fR|\fBnull\fR, default \fBrisk\fR),
+.B \-\-tls\-cert
+and
+.B \-\-tls\-key
+(enables HTTPS),
+.B \-\-api\-key\-path
+(default .conductor/api_keys.json).
 .TP
 .B cond run \fITASK\-FILE\fR
 Execute one YAML or JSON task file through the supervisor.
@@ -52,6 +70,31 @@ By default the supervisor immediately resumes execution; use \fB\-\-no\-run\fR t
 .B cond task cancel \fITASK\-ID\fR
 Cancel a task in \fBAWAITING_APPROVAL\fR state.
 .TP
+.B cond api-key generate
+Generate a new API key. Raw key shown once; stored as SHA-256 hash.
+Flags:
+.B \-\-actor
+(default "anonymous"),
+.B \-\-scope
+(repeatable, default "*"),
+.B \-\-store
+(default .conductor/api_keys.json).
+.TP
+.B cond api-key list
+List all API keys with prefix, actor, scopes, and revoked status.
+.TP
+.B cond api-key revoke \fIPREFIX\fR
+Revoke an API key by its prefix. Servers detect via file mtime check.
+.TP
+.B cond guild list
+List all failure knowledge records in the guild knowledge base.
+.TP
+.B cond guild show \fIKEY\fR
+Show a single guild record with failure context and resolution hints.
+.TP
+.B cond guild clear
+Remove all guild records from the store.
+.TP
 .B cond health
 Run \fBhealth_check()\fR across the CLI-facing runtime components.
 Returns exit code 0 when healthy and 1 when any issues are reported.
@@ -64,6 +107,16 @@ capabilities, and component health.
 Show offline dynamic help for commands and capabilities.
 Capability help is runtime-aware and remains available here instead of through separate manpages.
 .SH EXAMPLES
+.TP
+Start a TLS-protected server with API key auth:
+.EX
+cond serve --tls-cert cert.pem --tls-key key.pem --policy deny-all --port 443
+.EE
+.TP
+Generate an API key for automation:
+.EX
+cond api-key generate --actor deploy-bot --scope "task:submit"
+.EE
 .TP
 Run a basic task:
 .EX

@@ -1,24 +1,5 @@
 {
-  "version": "1.0",
-  "project": "conductor-engine",
-  "description": "AI collaboration config mirroring Conductor Engine's layered architecture — supervisor-driven orchestration with planner, worker, validator, policy, store, and guild roles.",
-  "agents": {
-    "primary": "supervisor",
-    "manifest": ".opencode/agents.json"
-  },
-  "subagents_dir": ".opencode/subagents",
-  "custom_instructions": [
-    "The Supervisor agent owns all agent delegation. No agent calls capabilities directly — always route through the Supervisor (matches engine invariant: supervisor is the only path through which a capability executes).",
-    "Planner agents break goals into ordered PlanSteps. They never execute — they return a plan for the orchestrator to dispatch.",
-    "Worker agents turn PlanSteps into TaskSubmissions. They call capabilities via the Supervisor, never directly.",
-    "Validator agents assess completed workflow results (pass/fail verdict). They never modify tasks.",
-    "Policy engines evaluate before capability execution (DENY / ALLOW / REQUIRE_APPROVAL). They operate before guardrails in the submission gate.",
-    "Guardrails validate input schema and path safety before any task leaves PENDING.",
-    "Store agents persist TaskRecords at every state transition. Reads return deep copies.",
-    "Retry strategies decide whether to retry after a capability failure. They never execute tasks.",
-    "Escalated is terminal — once a task reaches ESCALATED, it cannot return to RUNNING.",
-    "Guild agents share failure fingerprints and resolution hints across projects (Phase 6).",
-    "Control-plane agents expose versioned HTTP API surfaces — they consume the engine, they do not replace it.",
-    "Scheduler agents poll cron/webhook triggers and submit dispatches through the supervisor path."
-  ]
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "supervisor",
+  "instructions": [".opencode/INSTRUCTIONS.md"]
 }

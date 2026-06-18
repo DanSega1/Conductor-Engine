@@ -25,6 +25,7 @@ class EventType(StrEnum):
     TASK_APPROVED = "task_approved"
     TASK_CANCELLED = "task_cancelled"
     TASK_ESCALATED = "task_escalated"
+    GUILD_MEETING_COMPLETED = "guild_meeting_completed"
 
 
 class TaskEvent(BaseModel):

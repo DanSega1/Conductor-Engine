@@ -2,6 +2,54 @@
 
 <!-- version list -->
 
+## v0.13.0 (2026-06-17)
+
+### Features — Phase 7: Remote Deployment and Protected Operation
+
+- **auth**: ✨ API key authentication via `ApiKeyStore` — SHA-256 hashed keys,
+  file-backed persistence, `cond api-key generate/list/revoke` CLI commands.
+  (`engine/api/auth/`)
+
+- **auth**: ✨ Global `AuthMiddleware` enforces `Authorization: Bearer <key>` on
+  all endpoints except health and docs. When no keys exist, the API runs in
+  open mode for backward compatibility.
+
+- **auth**: ✨ `AuthContext.require_scope()` enforces granular permissions with
+  wildcard support. The auth context is set by middleware and consumed by routes
+  via `AuthDep`.
+
+- **policy**: ✨ `DenyByDefaultPolicy` — rejects every capability unless
+  explicitly listed in `allowed_capabilities`. Usable via `cond serve --policy
+  deny-all`.
+
+- **queue**: ✨ `BoundedTaskQueue` with configurable `max_size` (default 512),
+  backpressure via `QueueFull` exception, utilization-based health warnings at
+  90%+ capacity. HTTP endpoints return 429 when queue is full.
+
+- **cli**: ✨ `cond serve --tls-cert --tls-key` enables HTTPS. When TLS is
+  active, CORS defaults to empty and API key store auto-enables.
+
+- **cli**: ✨ `cond serve --policy risk|deny-all|null` selects the policy engine.
+  Default in serve mode is `risk` (`RiskLevelPolicyEngine` with
+  `deny_above=HIGH`).
+
+- **deploy**: ✨ Hardened multi-stage `Dockerfile` with non-root `conductor` user
+  (uid 999), `HEALTHCHECK`, and `ENTRYPOINT`.
+
+- **deploy**: ✨ Production `docker-compose.yml` with persistent volumes, TLS
+  mounts, and health check configuration.
+
+- **deploy**: ✨ Hardened `systemd` unit file with `NoNewPrivileges`,
+  `ProtectSystem=strict`, and capability sandboxing.
+
+- **cluster**: ✨ Remote runners can advertise capabilities via
+  `EngineNode.capabilities`. Coordinator routes based on capability metadata.
+
+### Tests
+
+- **tests**: 43 new tests covering ApiKeyStore (16), BoundedTaskQueue (10),
+  DenyByDefaultPolicy (10), and API auth enforcement (7).
+
 ## v0.10.0 (2026-04-14)
 
 ### Features
